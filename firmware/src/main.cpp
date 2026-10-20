@@ -27,6 +27,7 @@ static unsigned long videoFrameIntervalMs = 66;
 static unsigned long lastFrameRenderTime = 0;
 static unsigned long lastSlideshowTime = 0;
 static int videoLoopCount = 0;
+static bool isVideoPaused = false;
 
 static bool currentIsBmpr = false;
 static BmprHeader currentBmprHeader;
@@ -83,6 +84,7 @@ void displayPhoto(int index, TransitionMode transition) {
     currentVideoFile.close();
   }
   isCurrentFileVideo = false;
+  isVideoPaused = false;
   videoLoopCount = 0;
 
   String path = sdManager.getPhotoPath(currentPhotoIndex);
@@ -289,6 +291,52 @@ void setup() {
     displayPhoto(currentPhotoIndex - 1, currentSettings.transitionMode);
   };
 
+  bleService.onPausePlayback = [&](bool pause) {
+    wakeUpFromSleep();
+    isVideoPaused = pause;
+    displayManager.showToast("REPRODUCCION", isVideoPaused ? "Pausado ⏸" : "Reanudado ▶");
+  };
+
+  bleService.onToggleByteSwap = [&]() {
+    wakeUpFromSleep();
+    currentSettings.swapBytes = !currentSettings.swapBytes;
+    displayManager.setSwapBytes(currentSettings.swapBytes);
+    prefManager.saveSwapBytes(currentSettings.swapBytes);
+    displayPhoto(currentPhotoIndex, TRANSITION_NONE);
+    displayManager.showToast("BYTESWAP",
+                             currentSettings.swapBytes ? "Estado: ACTIVADO" : "Estado: DESACTIVADO");
+  };
+
+  bleService.onToggleInvert = [&]() {
+    wakeUpFromSleep();
+    currentSettings.invertDisplay = !currentSettings.invertDisplay;
+    displayManager.setInvertDisplay(currentSettings.invertDisplay);
+    prefManager.saveInvertDisplay(currentSettings.invertDisplay);
+    displayPhoto(currentPhotoIndex, TRANSITION_NONE);
+    displayManager.showToast("INVERSION",
+                             currentSettings.invertDisplay ? "Estado: ACTIVADA" : "Estado: NORMAL");
+  };
+
+  bleService.onGetStatus = [&]() -> String {
+    String curName = "";
+    if (sdManager.getPhotoCount() > 0) {
+      curName = sdManager.getPhotoPath(currentPhotoIndex);
+      if (curName.startsWith("/")) curName = curName.substring(1);
+    }
+    char buf[128];
+    snprintf(buf, sizeof(buf), "%d:%u:%d:%d:%d:%d:%u:%d:%s",
+             currentPhotoIndex,
+             (unsigned int)sdManager.getPhotoCount(),
+             isCurrentFileVideo ? 1 : 0,
+             isVideoPaused ? 1 : 0,
+             currentSettings.swapBytes ? 1 : 0,
+             currentSettings.invertDisplay ? 1 : 0,
+             currentSettings.brightnessDuty,
+             isSleeping ? 1 : 0,
+             curName.c_str());
+    return String(buf);
+  };
+
   bleService.onFpsChanged = [&](int fps) {
     wakeUpFromSleep();
     videoCurrentFps = fps;
@@ -396,8 +444,8 @@ void loop() {
 
   // Si no hay una subida activa por BLE
   if (!bleService.isUploadInProgress()) {
-    // 1. Reproducción de Video Cuadro a Cuadro (pausado temporalmente si hay un Toast activo o en Reposo)
-    if (isCurrentFileVideo && currentVideoFile && !displayManager.isToastActive() && !isSleeping) {
+    // 1. Reproducción de Video Cuadro a Cuadro (pausado temporalmente si hay un Toast activo, en Reposo o Pausa remota)
+    if (isCurrentFileVideo && currentVideoFile && !displayManager.isToastActive() && !isSleeping && !isVideoPaused) {
       if (millis() - lastFrameRenderTime >= videoFrameIntervalMs) {
         lastFrameRenderTime = millis();
         videoCurrentFrame = (videoCurrentFrame + 1) % videoTotalFrames;
@@ -413,8 +461,8 @@ void loop() {
       }
     }
 
-    // 2. Modo Diapositivas Automático (Punto 2) (pausado durante Reposo para fijar la foto atenuada)
-    if (currentSettings.slideshowEnabled && sdManager.getPhotoCount() > 1 && !isSleeping) {
+    // 2. Modo Diapositivas Automático (Punto 2) (pausado durante Reposo o Pausa remota)
+    if (currentSettings.slideshowEnabled && sdManager.getPhotoCount() > 1 && !isSleeping && !isVideoPaused) {
       unsigned long intervalMs = (unsigned long)currentSettings.slideshowDelaySec * 1000;
       bool shouldAdvance = false;
 

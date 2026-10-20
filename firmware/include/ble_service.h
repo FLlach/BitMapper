@@ -20,6 +20,7 @@ public:
 
   bool isActive() const { return isBleActive; }
   bool isConnected() const { return deviceConnected; }
+  void setDeviceConnected(bool connected) { deviceConnected = connected; }
   bool isUploadInProgress() const { return isUploading; }
 
   // Callbacks para eventos del sistema
@@ -29,6 +30,10 @@ public:
   std::function<void(const String &path)> onFileDeleted;
   std::function<void()> onNextPhoto;
   std::function<void()> onPrevPhoto;
+  std::function<void(bool pause)> onPausePlayback;
+  std::function<void()> onToggleByteSwap;
+  std::function<void()> onToggleInvert;
+  std::function<String()> onGetStatus;
   std::function<void(int fps)> onFpsChanged;
   std::function<void(bool enabled, int delaySec)> onSlideshowChanged;
   std::function<void(TransitionMode mode)> onTransitionChanged;
@@ -39,6 +44,7 @@ public:
   std::function<void()> onActivity;
 
   void notifyControl(const String &msg);
+  void sendThumbnail(const String &path);
 
   // Llamado internamente por los callbacks de BLE
   void handleControlCommand(const String &value);

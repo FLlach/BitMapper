@@ -5,15 +5,46 @@
 
 BLEServiceManager bleService;
 
+static const char B64_TABLE[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+static String toBase64(const uint8_t *data, size_t len) {
+  String res = "";
+  res.reserve(((len + 2) / 3) * 4);
+  size_t i = 0;
+  while (i < len) {
+    uint32_t octet_a = i < len ? data[i++] : 0;
+    uint32_t octet_b = i < len ? data[i++] : 0;
+    uint32_t octet_c = i < len ? data[i++] : 0;
+
+    uint32_t triple = (octet_a << 16) + (octet_b << 8) + octet_c;
+
+    res += B64_TABLE[(triple >> 18) & 0x3F];
+    res += B64_TABLE[(triple >> 12) & 0x3F];
+    res += (i > len + 1) ? '=' : B64_TABLE[(triple >> 6) & 0x3F];
+    res += (i > len) ? '=' : B64_TABLE[triple & 0x3F];
+  }
+  return res;
+}
+
 class BleServerCallbacks : public BLEServerCallbacks {
   void onConnect(BLEServer *pServer) override {
     Serial.println(">> [BLE]: Cliente conectado.");
     digitalWrite(ONBOARD_LED, LOW);
+    bleService.setDeviceConnected(true);
+  }
+
+  void onConnect(BLEServer *pServer, esp_ble_gatts_cb_param_t *param) override {
+    Serial.println(">> [BLE]: Cliente conectado (negociando parámetros de baja latencia).");
+    digitalWrite(ONBOARD_LED, LOW);
+    bleService.setDeviceConnected(true);
+    // Solicitar intervalo de conexión bajo (7.5 ms a 15 ms) para acelerar transferencia BLE
+    pServer->updateConnParams(param->connect.remote_bda, 6, 12, 0, 400);
   }
 
   void onDisconnect(BLEServer *pServer) override {
     Serial.println("<< [BLE]: Cliente desconectado.");
     digitalWrite(ONBOARD_LED, HIGH);
+    bleService.setDeviceConnected(false);
   }
 };
 
@@ -52,6 +83,7 @@ void BLEServiceManager::startBLE() {
   }
 
   BLEDevice::init("BitMapper-ESP32");
+  BLEDevice::setMTU(517);
   pServer = BLEDevice::createServer();
   pServer->setCallbacks(new BleServerCallbacks());
 
@@ -368,6 +400,29 @@ void BLEServiceManager::handleControlCommand(const String &value) {
   } else if (value == "WAKE_NOW") {
     if (onTriggerWake) onTriggerWake();
     notifyControl("SLEEP_STATE_OK:WAKE");
+  } else if (value == "PAUSE") {
+    if (onPausePlayback) onPausePlayback(true);
+    notifyControl("PAUSE_OK");
+  } else if (value == "RESUME") {
+    if (onPausePlayback) onPausePlayback(false);
+    notifyControl("RESUME_OK");
+  } else if (value == "SWAP_TOGGLE") {
+    if (onToggleByteSwap) onToggleByteSwap();
+    notifyControl("SWAP_OK");
+  } else if (value == "INV_TOGGLE") {
+    if (onToggleInvert) onToggleInvert();
+    notifyControl("INV_OK");
+  } else if (value == "STATUS" || value == "GET_STATUS") {
+    if (onGetStatus) {
+      String st = onGetStatus();
+      notifyControl("STATUS:" + st);
+    } else {
+      notifyControl("STATUS_OK");
+    }
+  } else if (value.startsWith("THUMB:")) {
+    String target = value.substring(6);
+    target.trim();
+    sendThumbnail(target);
   } else if (value == "GET_CONFIG") {
     // Formato: CONFIG:<swapBytes>:<invert>:<fps>:<slideOn>:<slideSec>:<transMode>:<bright>
     // Se responderá desde main con los valores vigentes
@@ -392,3 +447,99 @@ void BLEServiceManager::handleDataChunk(uint8_t *pData, size_t len) {
     displayManager.showProgress(uploadReceivedBytes, uploadTotalBytes);
   }
 }
+
+// -----------------------------------------------------------------------------
+// Generación y Transmisión de Miniaturas (Thumbnails 32x40)
+// -----------------------------------------------------------------------------
+void BLEServiceManager::sendThumbnail(const String &targetPath) {
+  String path = targetPath.startsWith("/") ? targetPath : "/" + targetPath;
+  String displayName = path.startsWith("/") ? path.substring(1) : path;
+
+  if (!SD.exists(path)) {
+    Serial.printf("❌ [Thumb] Archivo no existe: %s\n", path.c_str());
+    notifyControl("THUMB_ERR:" + displayName);
+    return;
+  }
+
+  File f = SD.open(path, FILE_READ);
+  if (!f) {
+    Serial.printf("❌ [Thumb] No se pudo abrir: %s\n", path.c_str());
+    notifyControl("THUMB_ERR:" + displayName);
+    return;
+  }
+
+  BmprHeader hdr;
+  bool isBmpr = false;
+  int imgW = IMAGE_WIDTH;
+  int imgH = IMAGE_HEIGHT;
+  size_t offset = 0;
+
+  if (f.size() >= sizeof(BmprHeader)) {
+    size_t r = f.read((uint8_t*)&hdr, sizeof(BmprHeader));
+    if (r == sizeof(BmprHeader) &&
+        hdr.magic[0] == 'B' && hdr.magic[1] == 'M' && hdr.magic[2] == 'P' && hdr.magic[3] == 'R') {
+      isBmpr = true;
+      imgW = hdr.width;
+      imgH = hdr.height;
+      offset = sizeof(BmprHeader);
+    }
+  }
+
+  if (imgW <= 0 || imgW > 1024) imgW = IMAGE_WIDTH;
+  if (imgH <= 0 || imgH > 1024) imgH = IMAGE_HEIGHT;
+
+  const int THUMB_W = 32;
+  const int THUMB_H = 40;
+  const size_t THUMB_BYTES = THUMB_W * THUMB_H * 2; // 2560 bytes
+
+  uint8_t *thumbBuf = (uint8_t*)malloc(THUMB_BYTES);
+  if (!thumbBuf) {
+    f.close();
+    notifyControl("THUMB_ERR:" + displayName);
+    return;
+  }
+
+  uint16_t *thumb16 = (uint16_t*)thumbBuf;
+  uint16_t *rowBuf = (uint16_t*)malloc(imgW * 2);
+  if (!rowBuf) {
+    free(thumbBuf);
+    f.close();
+    notifyControl("THUMB_ERR:" + displayName);
+    return;
+  }
+
+  for (int ty = 0; ty < THUMB_H; ty++) {
+    int sy = (ty * imgH) / THUMB_H;
+    size_t rowOffset = offset + (size_t)sy * imgW * 2;
+    f.seek(rowOffset);
+    f.read((uint8_t*)rowBuf, imgW * 2);
+
+    for (int tx = 0; tx < THUMB_W; tx++) {
+      int sx = (tx * imgW) / THUMB_W;
+      thumb16[ty * THUMB_W + tx] = rowBuf[sx];
+    }
+  }
+
+  free(rowBuf);
+  f.close();
+
+  notifyControl("THUMB_START:" + displayName + ":" + String(THUMB_BYTES) + ":32:40");
+  delay(20);
+
+  size_t sent = 0;
+  int chunkIdx = 0;
+  while (sent < THUMB_BYTES) {
+    size_t chunkLen = min((size_t)240, THUMB_BYTES - sent);
+    String b64 = toBase64(thumbBuf + sent, chunkLen);
+    notifyControl("THUMB_CHUNK:" + String(chunkIdx) + ":" + b64);
+    sent += chunkLen;
+    chunkIdx++;
+    delay(12);
+  }
+
+  free(thumbBuf);
+  delay(15);
+  notifyControl("THUMB_END:" + displayName);
+  Serial.printf("✔ [Thumb] Miniatura enviada para %s (2560 bytes)\n", displayName.c_str());
+}
+
