@@ -17,7 +17,10 @@ public:
   void setInvertDisplay(bool invert);
 
   void showCalibrationPattern();
-  void showToast(const char *line1, const char *line2 = nullptr);
+  void showToast(const char *line1, const char *line2 = nullptr, uint32_t durationMs = 2200);
+  bool isToastActive() const { return toastActive; }
+  bool hasToastExpired() const { return toastActive && (millis() >= toastExpiresAt); }
+  void clearToast() { toastActive = false; }
   void showProgress(size_t received, size_t total);
   void showNoSDMessage();
   void showEmptySDMessage();
@@ -37,6 +40,8 @@ private:
   TFT_eSPI tft;
   uint8_t currentDuty;
   bool isDmaActive;
+  bool toastActive;
+  unsigned long toastExpiresAt;
 
   // Búferes para renderizado rápido
   static const int CHUNK_LINES = 16;

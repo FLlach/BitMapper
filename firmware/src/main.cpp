@@ -166,12 +166,14 @@ void setup() {
   // 6. Configurar Callbacks de Eventos Táctiles
   touchHandler.onNext = [&]() {
     Serial.println("[Touch] 1 TOQUE -> Siguiente imagen");
+    displayManager.clearToast();
     lastSlideshowTime = millis();
     displayPhoto(currentPhotoIndex + 1, currentSettings.transitionMode);
   };
 
   touchHandler.onPrev = [&]() {
     Serial.println("[Touch] 2 TOQUES -> Imagen anterior");
+    displayManager.clearToast();
     lastSlideshowTime = millis();
     displayPhoto(currentPhotoIndex - 1, currentSettings.transitionMode);
   };
@@ -180,18 +182,18 @@ void setup() {
     currentSettings.swapBytes = !currentSettings.swapBytes;
     displayManager.setSwapBytes(currentSettings.swapBytes);
     prefManager.saveSwapBytes(currentSettings.swapBytes);
+    displayPhoto(currentPhotoIndex, TRANSITION_NONE);
     displayManager.showToast("BYTESWAP",
                              currentSettings.swapBytes ? "Estado: ACTIVADO" : "Estado: DESACTIVADO");
-    displayPhoto(currentPhotoIndex, TRANSITION_NONE);
   };
 
   touchHandler.onToggleInvert = [&]() {
     currentSettings.invertDisplay = !currentSettings.invertDisplay;
     displayManager.setInvertDisplay(currentSettings.invertDisplay);
     prefManager.saveInvertDisplay(currentSettings.invertDisplay);
+    displayPhoto(currentPhotoIndex, TRANSITION_NONE);
     displayManager.showToast("INVERSION",
                              currentSettings.invertDisplay ? "Estado: ACTIVADA" : "Estado: NORMAL");
-    displayPhoto(currentPhotoIndex, TRANSITION_NONE);
   };
 
   touchHandler.onCycleFps = [&]() {
@@ -303,10 +305,24 @@ void loop() {
   // Manejo de eventos y temporizadores de Bluetooth LE
   bleService.loop();
 
+  // Auto-expiración de Toasts en pantalla (borrado automático tras el tiempo de espera)
+  if (displayManager.isToastActive() && displayManager.hasToastExpired()) {
+    displayManager.clearToast();
+    if (!isCurrentFileVideo) {
+      if (sdManager.getPhotoCount() > 0) {
+        displayPhoto(currentPhotoIndex, TRANSITION_NONE);
+      } else if (!sdManager.isMounted()) {
+        displayManager.showNoSDMessage();
+      } else {
+        displayManager.showEmptySDMessage();
+      }
+    }
+  }
+
   // Si no hay una subida activa por BLE
   if (!bleService.isUploadInProgress()) {
-    // 1. Reproducción de Video Cuadro a Cuadro
-    if (isCurrentFileVideo && currentVideoFile) {
+    // 1. Reproducción de Video Cuadro a Cuadro (pausado temporalmente si hay un Toast activo)
+    if (isCurrentFileVideo && currentVideoFile && !displayManager.isToastActive()) {
       if (millis() - lastFrameRenderTime >= videoFrameIntervalMs) {
         lastFrameRenderTime = millis();
         videoCurrentFrame = (videoCurrentFrame + 1) % videoTotalFrames;

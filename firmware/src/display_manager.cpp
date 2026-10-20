@@ -3,7 +3,8 @@
 DisplayManager displayManager;
 
 DisplayManager::DisplayManager()
-    : tft(TFT_eSPI()), currentDuty(TFT_BACKLIGHT_DEFAULT_DUTY), isDmaActive(false) {}
+    : tft(TFT_eSPI()), currentDuty(TFT_BACKLIGHT_DEFAULT_DUTY), isDmaActive(false),
+      toastActive(false), toastExpiresAt(0) {}
 
 void DisplayManager::init(const DeviceSettings &settings) {
   currentDuty = settings.brightnessDuty;
@@ -85,7 +86,10 @@ void DisplayManager::showCalibrationPattern() {
   tft.drawString("Iniciando SD...", 10, 80);
 }
 
-void DisplayManager::showToast(const char *line1, const char *line2) {
+void DisplayManager::showToast(const char *line1, const char *line2, uint32_t durationMs) {
+  toastActive = true;
+  toastExpiresAt = millis() + durationMs;
+
   tft.fillRect(8, 50, 112, 44, TFT_NAVY);
   tft.drawRect(8, 50, 112, 44, TFT_CYAN);
 
