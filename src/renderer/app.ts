@@ -289,6 +289,27 @@ const el = {
   btnBleRemoteNext: document.getElementById('btnBleRemoteNext') as HTMLButtonElement,
   bleOptBmprHeader: document.getElementById('bleOptBmprHeader') as HTMLInputElement,
 
+  // Remote Control Elements (Mejora 3)
+  bleTabBtnRemote: document.getElementById('bleTabBtnRemote') as HTMLButtonElement,
+  blePaneRemote: document.getElementById('blePaneRemote') as HTMLElement,
+  btnBleRemoteSync: document.getElementById('btnBleRemoteSync') as HTMLButtonElement,
+  bleRemoteMediaTitle: document.getElementById('bleRemoteMediaTitle') as HTMLElement,
+  bleRemoteMediaMeta: document.getElementById('bleRemoteMediaMeta') as HTMLElement,
+  bleRemotePlaybackBadge: document.getElementById('bleRemotePlaybackBadge') as HTMLElement,
+  btnBleLivePrev: document.getElementById('btnBleLivePrev') as HTMLButtonElement,
+  btnBleLivePlayPause: document.getElementById('btnBleLivePlayPause') as HTMLButtonElement,
+  bleLivePlayPauseIcon: document.getElementById('bleLivePlayPauseIcon') as HTMLElement,
+  bleLivePlayPauseText: document.getElementById('bleLivePlayPauseText') as HTMLElement,
+  btnBleLiveNext: document.getElementById('btnBleLiveNext') as HTMLButtonElement,
+  btnBleLiveToggleSwap: document.getElementById('btnBleLiveToggleSwap') as HTMLButtonElement,
+  bleLiveSwapStatus: document.getElementById('bleLiveSwapStatus') as HTMLElement,
+  btnBleLiveToggleInvert: document.getElementById('btnBleLiveToggleInvert') as HTMLButtonElement,
+  bleLiveInvertStatus: document.getElementById('bleLiveInvertStatus') as HTMLElement,
+  btnBleLiveToggleSleep: document.getElementById('btnBleLiveToggleSleep') as HTMLButtonElement,
+  bleLiveSleepStatus: document.getElementById('bleLiveSleepStatus') as HTMLElement,
+  bleRemoteLiveBrightness: document.getElementById('bleRemoteLiveBrightness') as HTMLInputElement,
+  bleRemoteLiveBrightLabel: document.getElementById('bleRemoteLiveBrightLabel') as HTMLElement,
+
   // Utilities & Pixel Art & Font Gen
   btnHeaderFontGen: document.getElementById('btnHeaderFontGen') as HTMLButtonElement,
   btnHeaderCopyClipboard: document.getElementById('btnHeaderCopyClipboard') as HTMLButtonElement,
@@ -713,6 +734,9 @@ function setupEvents(): void {
   el.bleTabBtnBatch.addEventListener('click', () => switchBleTab('batch'));
   el.bleTabBtnManager.addEventListener('click', () => switchBleTab('manager'));
   el.bleTabBtnSettings.addEventListener('click', () => switchBleTab('settings'));
+  if (el.bleTabBtnRemote) {
+    el.bleTabBtnRemote.addEventListener('click', () => switchBleTab('remote'));
+  }
   el.btnBleRefreshFiles.addEventListener('click', () => loadBleSDFiles());
   el.btnBleAddBatchFiles.addEventListener('click', handleAddBatchFiles);
   el.btnBleClearBatch.addEventListener('click', () => {
@@ -833,6 +857,41 @@ function setupEvents(): void {
   if (el.btnBleRemoteNext) {
     el.btnBleRemoteNext.addEventListener('click', handleBleRemoteNext);
   }
+
+  // Controles en Vivo de la pestaña Control Remoto (Mejora 3)
+  if (el.btnBleRemoteSync) {
+    el.btnBleRemoteSync.addEventListener('click', () => syncBleRemoteStatus());
+  }
+  if (el.btnBleLivePrev) {
+    el.btnBleLivePrev.addEventListener('click', () => handleBleRemotePrev());
+  }
+  if (el.btnBleLiveNext) {
+    el.btnBleLiveNext.addEventListener('click', () => handleBleRemoteNext());
+  }
+  if (el.btnBleLivePlayPause) {
+    el.btnBleLivePlayPause.addEventListener('click', () => handleBleRemotePlayPause());
+  }
+  if (el.btnBleLiveToggleSwap) {
+    el.btnBleLiveToggleSwap.addEventListener('click', () => handleBleRemoteToggleSwap());
+  }
+  if (el.btnBleLiveToggleInvert) {
+    el.btnBleLiveToggleInvert.addEventListener('click', () => handleBleRemoteToggleInvert());
+  }
+  if (el.btnBleLiveToggleSleep) {
+    el.btnBleLiveToggleSleep.addEventListener('click', () => handleBleRemoteToggleSleep());
+  }
+  if (el.bleRemoteLiveBrightness) {
+    el.bleRemoteLiveBrightness.addEventListener('input', () => handleLiveBrightnessChange());
+  }
+  document.querySelectorAll('.btn-bright-preset').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const preset = parseInt((e.currentTarget as HTMLElement).getAttribute('data-preset') || '60', 10);
+      if (el.bleRemoteLiveBrightness) {
+        el.bleRemoteLiveBrightness.value = preset.toString();
+        handleLiveBrightnessChange();
+      }
+    });
+  });
 
   const optBleFull = document.getElementById('bleOptVideoFull');
   const optBleFrame = document.getElementById('bleOptVideoFrame');
@@ -3008,16 +3067,18 @@ async function startBleBatchUpload(): Promise<void> {
   }
 }
 
-function switchBleTab(tab: 'upload' | 'batch' | 'manager' | 'settings'): void {
+function switchBleTab(tab: 'upload' | 'batch' | 'manager' | 'settings' | 'remote'): void {
   el.bleTabBtnUpload.classList.toggle('active', tab === 'upload');
   el.bleTabBtnBatch.classList.toggle('active', tab === 'batch');
   el.bleTabBtnManager.classList.toggle('active', tab === 'manager');
   el.bleTabBtnSettings.classList.toggle('active', tab === 'settings');
+  if (el.bleTabBtnRemote) el.bleTabBtnRemote.classList.toggle('active', tab === 'remote');
 
   el.blePaneUpload.style.display = tab === 'upload' ? 'block' : 'none';
   el.blePaneBatch.style.display = tab === 'batch' ? 'block' : 'none';
   el.blePaneManager.style.display = tab === 'manager' ? 'block' : 'none';
   el.blePaneSettings.style.display = tab === 'settings' ? 'block' : 'none';
+  if (el.blePaneRemote) el.blePaneRemote.style.display = tab === 'remote' ? 'block' : 'none';
 
   if (tab === 'upload') {
     el.btnBleStartUpload.style.display = 'inline-flex';
@@ -3039,6 +3100,12 @@ function switchBleTab(tab: 'upload' | 'batch' | 'manager' | 'settings'): void {
   } else if (tab === 'settings') {
     el.btnBleStartUpload.style.display = 'none';
     el.btnBleStartBatchUpload.style.display = 'none';
+  } else if (tab === 'remote') {
+    el.btnBleStartUpload.style.display = 'none';
+    el.btnBleStartBatchUpload.style.display = 'none';
+    if (bleUploader.isConnected) {
+      syncBleRemoteStatus();
+    }
   }
 }
 
@@ -3113,6 +3180,181 @@ async function handleBleRemoteNext(): Promise<void> {
   } catch (err: any) {
     showToast(`Error: ${err?.message || err}`);
   }
+}
+
+// -----------------------------------------------------------------------------
+// Control Remoto en Tiempo Real (Mejora 3)
+// -----------------------------------------------------------------------------
+let livePlaybackPaused = false;
+let liveIsSleeping = false;
+let liveBrightnessDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+async function syncBleRemoteStatus(): Promise<void> {
+  if (!bleUploader.isConnected) {
+    showToast('Conectando al ESP32 para sincronizar...');
+    try {
+      await bleUploader.requestDeviceAndConnect((p) => updateBleProgressUI(p));
+    } catch (err: any) {
+      showToast(`Error de conexión BLE: ${err?.message || err}`);
+      return;
+    }
+  }
+
+  try {
+    if (el.btnBleRemoteSync) {
+      el.btnBleRemoteSync.disabled = true;
+      el.btnBleRemoteSync.textContent = 'Leyendo...';
+    }
+
+    const status = await bleUploader.getDeviceStatus();
+    if (!status) {
+      showToast('No se pudo obtener respuesta de estado del ESP32');
+      return;
+    }
+
+    livePlaybackPaused = status.isPaused;
+    liveIsSleeping = status.isSleeping;
+
+    if (el.bleRemoteMediaTitle) {
+      el.bleRemoteMediaTitle.textContent = status.currentFileName || 'Tarjeta MicroSD';
+    }
+    if (el.bleRemoteMediaMeta) {
+      el.bleRemoteMediaMeta.textContent = `Archivo ${status.photoIndex + 1} de ${status.photoCount} • ${status.isVideo ? 'Animación' : 'Foto fija'}`;
+    }
+
+    if (el.bleRemotePlaybackBadge) {
+      if (status.isSleeping) {
+        el.bleRemotePlaybackBadge.className = 'ble-badge ble-badge-scanning';
+        el.bleRemotePlaybackBadge.textContent = 'EN REPOSO (ATENUADO)';
+      } else if (status.isVideo && status.isPaused) {
+        el.bleRemotePlaybackBadge.className = 'ble-badge ble-badge-idle';
+        el.bleRemotePlaybackBadge.textContent = 'PAUSADO ⏸';
+      } else {
+        el.bleRemotePlaybackBadge.className = 'ble-badge ble-badge-connected';
+        el.bleRemotePlaybackBadge.textContent = status.isVideo ? 'REPRODUCIENDO ▶' : 'ACTIVO ✔';
+      }
+    }
+
+    if (el.bleLivePlayPauseText) {
+      el.bleLivePlayPauseText.textContent = status.isPaused ? 'Reanudar ▶' : 'Pausar ⏸';
+    }
+    if (el.bleLivePlayPauseIcon) {
+      el.bleLivePlayPauseIcon.textContent = status.isPaused ? '▶' : '⏸';
+    }
+
+    if (el.bleLiveSwapStatus) {
+      el.bleLiveSwapStatus.textContent = status.swapBytes ? 'SWAP: ON' : 'SWAP: OFF';
+    }
+    if (el.bleLiveInvertStatus) {
+      el.bleLiveInvertStatus.textContent = status.invertDisplay ? 'INV: ON' : 'INV: OFF';
+    }
+    if (el.bleLiveSleepStatus) {
+      el.bleLiveSleepStatus.textContent = status.isSleeping ? 'DESPERTAR' : 'REPOSO';
+    }
+
+    const brightPct = Math.round((status.brightnessDuty / 255) * 100);
+    if (el.bleRemoteLiveBrightness) {
+      el.bleRemoteLiveBrightness.value = brightPct.toString();
+    }
+    if (el.bleRemoteLiveBrightLabel) {
+      el.bleRemoteLiveBrightLabel.textContent = `${brightPct}%`;
+    }
+
+    showToast('✔ Estado del ESP32 sincronizado en vivo');
+  } catch (err: any) {
+    showToast(`Error al consultar estado: ${err?.message || err}`);
+  } finally {
+    if (el.btnBleRemoteSync) {
+      el.btnBleRemoteSync.disabled = false;
+      el.btnBleRemoteSync.innerHTML = `
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
+        Sincronizar
+      `;
+    }
+  }
+}
+
+async function handleBleRemotePlayPause(): Promise<void> {
+  try {
+    if (!bleUploader.isConnected) {
+      await bleUploader.requestDeviceAndConnect();
+    }
+    livePlaybackPaused = !livePlaybackPaused;
+    await bleUploader.sendPause(livePlaybackPaused);
+
+    if (el.bleLivePlayPauseText) {
+      el.bleLivePlayPauseText.textContent = livePlaybackPaused ? 'Reanudar ▶' : 'Pausar ⏸';
+    }
+    if (el.bleLivePlayPauseIcon) {
+      el.bleLivePlayPauseIcon.textContent = livePlaybackPaused ? '▶' : '⏸';
+    }
+    if (el.bleRemotePlaybackBadge) {
+      el.bleRemotePlaybackBadge.className = livePlaybackPaused ? 'ble-badge ble-badge-idle' : 'ble-badge ble-badge-connected';
+      el.bleRemotePlaybackBadge.textContent = livePlaybackPaused ? 'PAUSADO ⏸' : 'REPRODUCIENDO ▶';
+    }
+
+    showToast(livePlaybackPaused ? 'Reproducción pausada ⏸' : 'Reproducción reanudada ▶');
+  } catch (err: any) {
+    showToast(`Error: ${err?.message || err}`);
+  }
+}
+
+async function handleBleRemoteToggleSwap(): Promise<void> {
+  try {
+    if (!bleUploader.isConnected) {
+      await bleUploader.requestDeviceAndConnect();
+    }
+    await bleUploader.sendToggleByteSwap();
+    showToast('ByteSwap alternado en pantalla ST7735S');
+    setTimeout(() => syncBleRemoteStatus(), 300);
+  } catch (err: any) {
+    showToast(`Error: ${err?.message || err}`);
+  }
+}
+
+async function handleBleRemoteToggleInvert(): Promise<void> {
+  try {
+    if (!bleUploader.isConnected) {
+      await bleUploader.requestDeviceAndConnect();
+    }
+    await bleUploader.sendToggleInvert();
+    showToast('Inversión de color alternada');
+    setTimeout(() => syncBleRemoteStatus(), 300);
+  } catch (err: any) {
+    showToast(`Error: ${err?.message || err}`);
+  }
+}
+
+async function handleBleRemoteToggleSleep(): Promise<void> {
+  try {
+    if (!bleUploader.isConnected) {
+      await bleUploader.requestDeviceAndConnect();
+    }
+    liveIsSleeping = !liveIsSleeping;
+    await bleUploader.triggerSleep(liveIsSleeping);
+    showToast(liveIsSleeping ? 'Modo reposo activado (pantalla atenuada)' : 'Dispositivo reactivado a brillo activo');
+    setTimeout(() => syncBleRemoteStatus(), 400);
+  } catch (err: any) {
+    showToast(`Error: ${err?.message || err}`);
+  }
+}
+
+function handleLiveBrightnessChange(): void {
+  if (!el.bleRemoteLiveBrightness) return;
+  const pct = parseInt(el.bleRemoteLiveBrightness.value, 10) || 60;
+  if (el.bleRemoteLiveBrightLabel) {
+    el.bleRemoteLiveBrightLabel.textContent = `${pct}%`;
+  }
+  const duty = Math.round((pct / 100) * 255);
+
+  if (liveBrightnessDebounceTimer) {
+    clearTimeout(liveBrightnessDebounceTimer);
+  }
+  liveBrightnessDebounceTimer = setTimeout(() => {
+    if (bleUploader.isConnected) {
+      bleUploader.sendLiveBrightness(duty);
+    }
+  }, 40);
 }
 
 let currentSDFiles: SDBinFile[] = [];
@@ -3210,9 +3452,28 @@ function renderBleFilesList(files: SDBinFile[]): void {
     const left = document.createElement('div');
     left.className = 'ble-file-item-left';
 
-    const icon = document.createElement('div');
-    icon.className = `ble-file-type-icon ${f.isVideo ? 'video' : ''}`;
-    icon.textContent = f.isVideo ? '🎬' : '🖼️';
+    const thumbBox = document.createElement('div');
+    thumbBox.className = 'ble-file-thumb';
+    const cleanId = f.name.replace(/[^a-zA-Z0-9]/g, '_');
+    thumbBox.id = `thumb_${cleanId}`;
+
+    const placeholder = document.createElement('span');
+    placeholder.className = 'ble-file-thumb-placeholder';
+    placeholder.textContent = f.isVideo ? '🎬' : '🖼️';
+    thumbBox.appendChild(placeholder);
+
+    // Cargar miniatura si está en caché o solicitar al ESP32 (Mejora 2)
+    bleUploader.fetchThumbnail(f.name).then((dataUrl) => {
+      if (dataUrl) {
+        thumbBox.innerHTML = '';
+        const img = document.createElement('img');
+        img.src = dataUrl;
+        img.alt = f.name;
+        thumbBox.appendChild(img);
+      }
+    }).catch(() => {
+      // Dejar icono fallback
+    });
 
     const info = document.createElement('div');
     info.className = 'ble-file-item-info';
@@ -3228,7 +3489,7 @@ function renderBleFilesList(files: SDBinFile[]): void {
 
     info.appendChild(name);
     info.appendChild(meta);
-    left.appendChild(icon);
+    left.appendChild(thumbBox);
     left.appendChild(info);
 
     const actions = document.createElement('div');

@@ -586,6 +586,10 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
           Ajustes y Diapositivas
         </button>
+        <button class="ble-tab-btn" id="bleTabBtnRemote" data-ble-tab="remote">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="6 3 20 12 6 21 6 3"></polygon></svg>
+          🎮 Control Remoto
+        </button>
       </div>
 
       <div class="modal-body">
@@ -880,6 +884,111 @@
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
               Enviar Ajustes a ESP32
             </button>
+          </div>
+        </div>
+
+        <!-- Pestaña 5: Control Remoto en Tiempo Real (Mejora 3) -->
+        <div id="blePaneRemote" style="display: none;">
+          <!-- Tarjeta: Estado en Vivo -->
+          <div class="ble-card">
+            <div class="ble-card-header-row">
+              <div class="ble-card-title">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                Dispositivo y Estado en Vivo
+              </div>
+              <button id="btnBleRemoteSync" class="btn" style="font-size: 11px; padding: 4px 10px; display: flex; align-items: center; gap: 4px;" title="Consultar estado actual del ESP32">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
+                Sincronizar
+              </button>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 8px; background: rgba(0,0,0,0.25); padding: 10px 14px; border-radius: 6px; border: 1px solid var(--border-color);">
+              <div>
+                <div id="bleRemoteMediaTitle" style="font-size: 13px; font-weight: 700; color: #fff;">Sin medio seleccionado</div>
+                <div id="bleRemoteMediaMeta" style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); margin-top: 2px;">
+                  Conecta al ESP32 para controlar la reproducción
+                </div>
+              </div>
+              <span id="bleRemotePlaybackBadge" class="ble-badge ble-badge-idle">DESCONECTADO</span>
+            </div>
+          </div>
+
+          <!-- Tarjeta: Controles de Reproducción -->
+          <div class="ble-card" style="margin-top: 14px;">
+            <div class="ble-card-title">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+              Controles de Reproducción Multimedia
+            </div>
+            <div style="font-size: 12px; color: var(--text-dim); margin-bottom: 12px;">
+              Avanza, retrocede o pausa la imagen o animación proyectada en la pantalla ST7735S.
+            </div>
+
+            <div style="display: flex; gap: 10px; justify-content: center; align-items: center; background: rgba(255,255,255,0.02); padding: 12px; border-radius: 8px; border: 1px solid var(--border-color);">
+              <button id="btnBleLivePrev" class="btn" style="padding: 10px 18px; font-weight: 600; display: flex; align-items: center; gap: 6px;" title="Foto o video anterior">
+                ⏮️ Anterior
+              </button>
+              <button id="btnBleLivePlayPause" class="btn btn-accent" style="padding: 10px 22px; font-weight: 700; display: flex; align-items: center; gap: 8px;" title="Pausar o reanudar reproducción">
+                <span id="bleLivePlayPauseIcon">⏯️</span>
+                <span id="bleLivePlayPauseText">Pausa / Play</span>
+              </button>
+              <button id="btnBleLiveNext" class="btn" style="padding: 10px 18px; font-weight: 600; display: flex; align-items: center; gap: 6px;" title="Foto o video siguiente">
+                Siguiente ⏭️
+              </button>
+            </div>
+          </div>
+
+          <!-- Tarjeta: Ajustes de Pantalla en Vivo (Tiempo Real) -->
+          <div class="ble-card" style="margin-top: 14px;">
+            <div class="ble-card-title">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+              Ajustes de Pantalla en Tiempo Real
+            </div>
+            <div style="font-size: 12px; color: var(--text-dim); margin-bottom: 12px;">
+              Modifica la orientación de bytes, la paleta o el estado de suspensión al instante sin tocar físicamente el dispositivo.
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
+              <button id="btnBleLiveToggleSwap" class="ble-remote-btn" title="Alternar formato de bytes Little/Big Endian">
+                <span style="font-size: 18px;">🔄</span>
+                <span>ByteSwap</span>
+                <span id="bleLiveSwapStatus" style="font-size: 10px; color: var(--accent-cyan); font-weight: 700;">TOGGLE</span>
+              </button>
+
+              <button id="btnBleLiveToggleInvert" class="ble-remote-btn" title="Invertir colores de la pantalla">
+                <span style="font-size: 18px;">🌓</span>
+                <span>Inversión</span>
+                <span id="bleLiveInvertStatus" style="font-size: 10px; color: var(--accent-cyan); font-weight: 700;">TOGGLE</span>
+              </button>
+
+              <button id="btnBleLiveToggleSleep" class="ble-remote-btn" title="Alternar modo reposo / atenuar brillo">
+                <span style="font-size: 18px;">💤</span>
+                <span>Modo Reposo</span>
+                <span id="bleLiveSleepStatus" style="font-size: 10px; color: var(--accent-cyan); font-weight: 700;">REPOSO</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Tarjeta: Brillo de Retroiluminación en Vivo por PWM -->
+          <div class="ble-card" style="margin-top: 14px;">
+            <div class="ble-card-header-row">
+              <div class="ble-card-title">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+                Brillo en Vivo (PWM Continuo)
+              </div>
+              <span id="bleRemoteLiveBrightLabel" style="font-size: 13px; font-weight: 700; color: var(--accent-cyan);">60%</span>
+            </div>
+            <div style="font-size: 12px; color: var(--text-dim); margin-bottom: 10px;">
+              Mueve el slider para ajustar la intensidad luminosa de la pantalla en tiempo real.
+            </div>
+
+            <input type="range" id="bleRemoteLiveBrightness" min="0" max="100" value="60" style="width: 100%;">
+
+            <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 10px;">
+              <button class="btn btn-bright-preset" data-preset="10" style="font-size: 10px; padding: 4px 8px;">10% Tenue</button>
+              <button class="btn btn-bright-preset" data-preset="40" style="font-size: 10px; padding: 4px 8px;">40% Medio</button>
+              <button class="btn btn-bright-preset" data-preset="75" style="font-size: 10px; padding: 4px 8px;">75% Normal</button>
+              <button class="btn btn-bright-preset" data-preset="100" style="font-size: 10px; padding: 4px 8px;">100% Máx</button>
+            </div>
           </div>
         </div>
       </div>

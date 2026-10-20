@@ -223,8 +223,8 @@ export class BLEUploader {
         new Promise(r => setTimeout(r, 250))
       ]);
 
-      // 3. Enviar chunks binarios
-      const CHUNK_SIZE = 240; // MTU óptimo para ESP32-C3
+      // 3. Enviar chunks binarios acelerados (MTU 517 negociado)
+      const CHUNK_SIZE = 490; // Aceleración BLE óptima para MTU 517
       const totalBytes = bytes.byteLength;
       let offset = 0;
       const startTime = performance.now();
@@ -265,7 +265,7 @@ export class BLEUploader {
 
         onProgress({
           state: 'uploading',
-          statusText: `Transmitiendo a MicroSD...`,
+          statusText: `Transmitiendo a MicroSD (${speedKbps.toFixed(1)} KB/s)...`,
           bytesSent: offset,
           totalBytes,
           percentage,
@@ -273,8 +273,8 @@ export class BLEUploader {
           speedKbps
         });
 
-        // Breve pausa para no saturar el buffer del ESP32 y permitir la escritura en la SD
-        await new Promise(r => setTimeout(r, 4));
+        // Pacing ultra-rápido de 3ms compatible con escritura SPI en MicroSD
+        await new Promise(r => setTimeout(r, 3));
       }
 
       // 4. Enviar comando DONE
@@ -576,6 +576,209 @@ export class BLEUploader {
     const cmd = enterSleep ? 'SLEEP_NOW' : 'WAKE_NOW';
     const resp = await this.sendGenericCommand(cmd, 'SLEEP_STATE_OK', 2500);
     return resp.startsWith('SLEEP_STATE_OK');
+  }
+
+  private thumbCache: Map<string, string> = new Map();
+
+  public clearThumbCache(): void {
+    this.thumbCache.clear();
+  }
+
+  /**
+   * Obtiene la miniatura (32x40 píxeles, RGB565) de un archivo .bin/.bmpr en la MicroSD
+   * y la convierte a DataURL PNG para previsualización inmediata.
+   */
+  public async fetchThumbnail(fileName: string): Promise<string | null> {
+    const cleanName = fileName.startsWith('/') ? fileName.substring(1) : fileName;
+    if (this.thumbCache.has(cleanName)) {
+      return this.thumbCache.get(cleanName)!;
+    }
+
+    if (!this.activeDevice || !this.server || !this.controlChar) {
+      return null;
+    }
+
+    return new Promise(async (resolve) => {
+      let timeoutTimer: ReturnType<typeof setTimeout>;
+      let receivedBytes: Uint8Array | null = null;
+      let expectedTotal = 2560;
+      let thumbW = 32;
+      let thumbH = 40;
+      let currentOffset = 0;
+
+      const cleanup = () => {
+        clearTimeout(timeoutTimer);
+        try {
+          this.controlChar.removeEventListener('characteristicvaluechanged', onThumbNotif);
+        } catch {
+          // Ignorar
+        }
+      };
+
+      const onThumbNotif = (event: Event) => {
+        const char = event.target as any;
+        const val = new TextDecoder().decode(char.value);
+
+        if (val.startsWith('THUMB_START:')) {
+          const parts = val.substring(12).split(':');
+          expectedTotal = parseInt(parts[1], 10) || 2560;
+          thumbW = parseInt(parts[2], 10) || 32;
+          thumbH = parseInt(parts[3], 10) || 40;
+          receivedBytes = new Uint8Array(expectedTotal);
+          currentOffset = 0;
+        } else if (val.startsWith('THUMB_CHUNK:')) {
+          if (!receivedBytes) return;
+          const colon2 = val.indexOf(':', 12);
+          if (colon2 === -1) return;
+          const b64 = val.substring(colon2 + 1);
+          try {
+            const binStr = atob(b64);
+            for (let i = 0; i < binStr.length && currentOffset < expectedTotal; i++) {
+              receivedBytes[currentOffset++] = binStr.charCodeAt(i);
+            }
+          } catch (e) {
+            console.warn('[BLE Thumb] Error base64:', e);
+          }
+        } else if (val.startsWith('THUMB_END:')) {
+          cleanup();
+          if (receivedBytes && currentOffset > 0) {
+            const dataUrl = this.convertRgb565ToDataUrl(receivedBytes, thumbW, thumbH);
+            this.thumbCache.set(cleanName, dataUrl);
+            resolve(dataUrl);
+          } else {
+            resolve(null);
+          }
+        } else if (val.startsWith('THUMB_ERR:')) {
+          cleanup();
+          resolve(null);
+        }
+      };
+
+      try {
+        await this.controlChar.startNotifications();
+        this.controlChar.addEventListener('characteristicvaluechanged', onThumbNotif);
+
+        const encoder = new TextEncoder();
+        await this.controlChar.writeValue(encoder.encode(`THUMB:${cleanName}`));
+
+        timeoutTimer = setTimeout(() => {
+          cleanup();
+          resolve(null);
+        }, 6000);
+      } catch (err) {
+        cleanup();
+        resolve(null);
+      }
+    });
+  }
+
+  /**
+   * Convierte un buffer binario RGB565 (32x40) a DataURL de imagen en canvas
+   */
+  private convertRgb565ToDataUrl(bytes: Uint8Array, width: number, height: number): string {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return '';
+
+    const imgData = ctx.createImageData(width, height);
+    const totalPixels = width * height;
+
+    for (let i = 0; i < totalPixels; i++) {
+      const idx = i * 2;
+      if (idx + 1 >= bytes.length) break;
+      const lsb = bytes[idx];
+      const msb = bytes[idx + 1];
+      const pixel16 = (msb << 8) | lsb;
+
+      const r = Math.round(((pixel16 >> 11) & 0x1f) * (255 / 31));
+      const g = Math.round(((pixel16 >> 5) & 0x3f) * (255 / 63));
+      const b = Math.round((pixel16 & 0x1f) * (255 / 31));
+
+      const outIdx = i * 4;
+      imgData.data[outIdx] = r;
+      imgData.data[outIdx + 1] = g;
+      imgData.data[outIdx + 2] = b;
+      imgData.data[outIdx + 3] = 255;
+    }
+
+    ctx.putImageData(imgData, 0, 0);
+    return canvas.toDataURL('image/png');
+  }
+
+  /**
+   * Pausar o reanudar reproducción de video/animación
+   */
+  public async sendPause(paused: boolean): Promise<boolean> {
+    const cmd = paused ? 'PAUSE' : 'RESUME';
+    const resp = await this.sendGenericCommand(cmd, paused ? 'PAUSE_OK' : 'RESUME_OK', 2000);
+    return resp.includes('_OK');
+  }
+
+  /**
+   * Alternar ByteSwap (Little/Big Endian) en la pantalla
+   */
+  public async sendToggleByteSwap(): Promise<boolean> {
+    const resp = await this.sendGenericCommand('SWAP_TOGGLE', 'SWAP_OK', 2000);
+    return resp.startsWith('SWAP_OK');
+  }
+
+  /**
+   * Alternar Inversión de colores en la pantalla
+   */
+  public async sendToggleInvert(): Promise<boolean> {
+    const resp = await this.sendGenericCommand('INV_TOGGLE', 'INV_OK', 2000);
+    return resp.startsWith('INV_OK');
+  }
+
+  /**
+   * Ajuste de brillo en vivo y continuo (PWM)
+   */
+  public async sendLiveBrightness(duty: number): Promise<void> {
+    if (!this.activeDevice || !this.server || !this.controlChar) return;
+    const clamped = Math.max(0, Math.min(255, Math.round(duty)));
+    const encoder = new TextEncoder();
+    try {
+      if (this.controlChar.writeValueWithoutResponse) {
+        await this.controlChar.writeValueWithoutResponse(encoder.encode(`BRIGHT:${clamped}`));
+      } else {
+        await this.controlChar.writeValue(encoder.encode(`BRIGHT:${clamped}`));
+      }
+    } catch {
+      // Ignorar para no bloquear el slider de brillo continuo
+    }
+  }
+
+  /**
+   * Consultar estado en vivo del dispositivo
+   */
+  public async getDeviceStatus(): Promise<{
+    photoIndex: number;
+    photoCount: number;
+    isVideo: boolean;
+    isPaused: boolean;
+    swapBytes: boolean;
+    invertDisplay: boolean;
+    brightnessDuty: number;
+    isSleeping: boolean;
+    currentFileName: string;
+  } | null> {
+    const resp = await this.sendGenericCommand('STATUS', 'STATUS:', 2500);
+    if (!resp.startsWith('STATUS:')) return null;
+
+    const parts = resp.substring(7).split(':');
+    return {
+      photoIndex: parseInt(parts[0], 10) || 0,
+      photoCount: parseInt(parts[1], 10) || 0,
+      isVideo: parts[2] === '1',
+      isPaused: parts[3] === '1',
+      swapBytes: parts[4] === '1',
+      invertDisplay: parts[5] === '1',
+      brightnessDuty: parseInt(parts[6], 10) || 153,
+      isSleeping: parts[7] === '1',
+      currentFileName: parts[8] || ''
+    };
   }
 
   /**

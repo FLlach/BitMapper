@@ -3870,7 +3870,7 @@ void loop() {
           readyPromise,
           new Promise((r) => setTimeout(r, 250))
         ]);
-        const CHUNK_SIZE = 240;
+        const CHUNK_SIZE = 490;
         const totalBytes = bytes.byteLength;
         let offset = 0;
         const startTime = performance.now();
@@ -3903,14 +3903,14 @@ void loop() {
           const percentage = Math.min(100, Math.round(offset / totalBytes * 100));
           onProgress({
             state: "uploading",
-            statusText: `Transmitiendo a MicroSD...`,
+            statusText: `Transmitiendo a MicroSD (${speedKbps.toFixed(1)} KB/s)...`,
             bytesSent: offset,
             totalBytes,
             percentage,
             deviceName: devName,
             speedKbps
           });
-          await new Promise((r) => setTimeout(r, 4));
+          await new Promise((r) => setTimeout(r, 3));
         }
         onProgress({
           state: "uploading",
@@ -4163,6 +4163,174 @@ void loop() {
       const cmd = enterSleep ? "SLEEP_NOW" : "WAKE_NOW";
       const resp = await this.sendGenericCommand(cmd, "SLEEP_STATE_OK", 2500);
       return resp.startsWith("SLEEP_STATE_OK");
+    }
+    thumbCache = /* @__PURE__ */ new Map();
+    clearThumbCache() {
+      this.thumbCache.clear();
+    }
+    /**
+     * Obtiene la miniatura (32x40 píxeles, RGB565) de un archivo .bin/.bmpr en la MicroSD
+     * y la convierte a DataURL PNG para previsualización inmediata.
+     */
+    async fetchThumbnail(fileName) {
+      const cleanName = fileName.startsWith("/") ? fileName.substring(1) : fileName;
+      if (this.thumbCache.has(cleanName)) {
+        return this.thumbCache.get(cleanName);
+      }
+      if (!this.activeDevice || !this.server || !this.controlChar) {
+        return null;
+      }
+      return new Promise(async (resolve) => {
+        let timeoutTimer;
+        let receivedBytes = null;
+        let expectedTotal = 2560;
+        let thumbW = 32;
+        let thumbH = 40;
+        let currentOffset = 0;
+        const cleanup = () => {
+          clearTimeout(timeoutTimer);
+          try {
+            this.controlChar.removeEventListener("characteristicvaluechanged", onThumbNotif);
+          } catch {
+          }
+        };
+        const onThumbNotif = (event) => {
+          const char = event.target;
+          const val = new TextDecoder().decode(char.value);
+          if (val.startsWith("THUMB_START:")) {
+            const parts = val.substring(12).split(":");
+            expectedTotal = parseInt(parts[1], 10) || 2560;
+            thumbW = parseInt(parts[2], 10) || 32;
+            thumbH = parseInt(parts[3], 10) || 40;
+            receivedBytes = new Uint8Array(expectedTotal);
+            currentOffset = 0;
+          } else if (val.startsWith("THUMB_CHUNK:")) {
+            if (!receivedBytes) return;
+            const colon2 = val.indexOf(":", 12);
+            if (colon2 === -1) return;
+            const b64 = val.substring(colon2 + 1);
+            try {
+              const binStr = atob(b64);
+              for (let i = 0; i < binStr.length && currentOffset < expectedTotal; i++) {
+                receivedBytes[currentOffset++] = binStr.charCodeAt(i);
+              }
+            } catch (e) {
+              console.warn("[BLE Thumb] Error base64:", e);
+            }
+          } else if (val.startsWith("THUMB_END:")) {
+            cleanup();
+            if (receivedBytes && currentOffset > 0) {
+              const dataUrl = this.convertRgb565ToDataUrl(receivedBytes, thumbW, thumbH);
+              this.thumbCache.set(cleanName, dataUrl);
+              resolve(dataUrl);
+            } else {
+              resolve(null);
+            }
+          } else if (val.startsWith("THUMB_ERR:")) {
+            cleanup();
+            resolve(null);
+          }
+        };
+        try {
+          await this.controlChar.startNotifications();
+          this.controlChar.addEventListener("characteristicvaluechanged", onThumbNotif);
+          const encoder = new TextEncoder();
+          await this.controlChar.writeValue(encoder.encode(`THUMB:${cleanName}`));
+          timeoutTimer = setTimeout(() => {
+            cleanup();
+            resolve(null);
+          }, 6e3);
+        } catch (err) {
+          cleanup();
+          resolve(null);
+        }
+      });
+    }
+    /**
+     * Convierte un buffer binario RGB565 (32x40) a DataURL de imagen en canvas
+     */
+    convertRgb565ToDataUrl(bytes, width, height) {
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return "";
+      const imgData = ctx.createImageData(width, height);
+      const totalPixels = width * height;
+      for (let i = 0; i < totalPixels; i++) {
+        const idx = i * 2;
+        if (idx + 1 >= bytes.length) break;
+        const lsb = bytes[idx];
+        const msb = bytes[idx + 1];
+        const pixel16 = msb << 8 | lsb;
+        const r = Math.round((pixel16 >> 11 & 31) * (255 / 31));
+        const g = Math.round((pixel16 >> 5 & 63) * (255 / 63));
+        const b = Math.round((pixel16 & 31) * (255 / 31));
+        const outIdx = i * 4;
+        imgData.data[outIdx] = r;
+        imgData.data[outIdx + 1] = g;
+        imgData.data[outIdx + 2] = b;
+        imgData.data[outIdx + 3] = 255;
+      }
+      ctx.putImageData(imgData, 0, 0);
+      return canvas.toDataURL("image/png");
+    }
+    /**
+     * Pausar o reanudar reproducción de video/animación
+     */
+    async sendPause(paused) {
+      const cmd = paused ? "PAUSE" : "RESUME";
+      const resp = await this.sendGenericCommand(cmd, paused ? "PAUSE_OK" : "RESUME_OK", 2e3);
+      return resp.includes("_OK");
+    }
+    /**
+     * Alternar ByteSwap (Little/Big Endian) en la pantalla
+     */
+    async sendToggleByteSwap() {
+      const resp = await this.sendGenericCommand("SWAP_TOGGLE", "SWAP_OK", 2e3);
+      return resp.startsWith("SWAP_OK");
+    }
+    /**
+     * Alternar Inversión de colores en la pantalla
+     */
+    async sendToggleInvert() {
+      const resp = await this.sendGenericCommand("INV_TOGGLE", "INV_OK", 2e3);
+      return resp.startsWith("INV_OK");
+    }
+    /**
+     * Ajuste de brillo en vivo y continuo (PWM)
+     */
+    async sendLiveBrightness(duty) {
+      if (!this.activeDevice || !this.server || !this.controlChar) return;
+      const clamped = Math.max(0, Math.min(255, Math.round(duty)));
+      const encoder = new TextEncoder();
+      try {
+        if (this.controlChar.writeValueWithoutResponse) {
+          await this.controlChar.writeValueWithoutResponse(encoder.encode(`BRIGHT:${clamped}`));
+        } else {
+          await this.controlChar.writeValue(encoder.encode(`BRIGHT:${clamped}`));
+        }
+      } catch {
+      }
+    }
+    /**
+     * Consultar estado en vivo del dispositivo
+     */
+    async getDeviceStatus() {
+      const resp = await this.sendGenericCommand("STATUS", "STATUS:", 2500);
+      if (!resp.startsWith("STATUS:")) return null;
+      const parts = resp.substring(7).split(":");
+      return {
+        photoIndex: parseInt(parts[0], 10) || 0,
+        photoCount: parseInt(parts[1], 10) || 0,
+        isVideo: parts[2] === "1",
+        isPaused: parts[3] === "1",
+        swapBytes: parts[4] === "1",
+        invertDisplay: parts[5] === "1",
+        brightnessDuty: parseInt(parts[6], 10) || 153,
+        isSleeping: parts[7] === "1",
+        currentFileName: parts[8] || ""
+      };
     }
     /**
      * Método de conveniencia completo (Conectar + Transmitir).
@@ -5149,6 +5317,26 @@ void loop() {
     btnBleRemotePrev: document.getElementById("btnBleRemotePrev"),
     btnBleRemoteNext: document.getElementById("btnBleRemoteNext"),
     bleOptBmprHeader: document.getElementById("bleOptBmprHeader"),
+    // Remote Control Elements (Mejora 3)
+    bleTabBtnRemote: document.getElementById("bleTabBtnRemote"),
+    blePaneRemote: document.getElementById("blePaneRemote"),
+    btnBleRemoteSync: document.getElementById("btnBleRemoteSync"),
+    bleRemoteMediaTitle: document.getElementById("bleRemoteMediaTitle"),
+    bleRemoteMediaMeta: document.getElementById("bleRemoteMediaMeta"),
+    bleRemotePlaybackBadge: document.getElementById("bleRemotePlaybackBadge"),
+    btnBleLivePrev: document.getElementById("btnBleLivePrev"),
+    btnBleLivePlayPause: document.getElementById("btnBleLivePlayPause"),
+    bleLivePlayPauseIcon: document.getElementById("bleLivePlayPauseIcon"),
+    bleLivePlayPauseText: document.getElementById("bleLivePlayPauseText"),
+    btnBleLiveNext: document.getElementById("btnBleLiveNext"),
+    btnBleLiveToggleSwap: document.getElementById("btnBleLiveToggleSwap"),
+    bleLiveSwapStatus: document.getElementById("bleLiveSwapStatus"),
+    btnBleLiveToggleInvert: document.getElementById("btnBleLiveToggleInvert"),
+    bleLiveInvertStatus: document.getElementById("bleLiveInvertStatus"),
+    btnBleLiveToggleSleep: document.getElementById("btnBleLiveToggleSleep"),
+    bleLiveSleepStatus: document.getElementById("bleLiveSleepStatus"),
+    bleRemoteLiveBrightness: document.getElementById("bleRemoteLiveBrightness"),
+    bleRemoteLiveBrightLabel: document.getElementById("bleRemoteLiveBrightLabel"),
     // Utilities & Pixel Art & Font Gen
     btnHeaderFontGen: document.getElementById("btnHeaderFontGen"),
     btnHeaderCopyClipboard: document.getElementById("btnHeaderCopyClipboard"),
@@ -5517,6 +5705,9 @@ void loop() {
     el.bleTabBtnBatch.addEventListener("click", () => switchBleTab("batch"));
     el.bleTabBtnManager.addEventListener("click", () => switchBleTab("manager"));
     el.bleTabBtnSettings.addEventListener("click", () => switchBleTab("settings"));
+    if (el.bleTabBtnRemote) {
+      el.bleTabBtnRemote.addEventListener("click", () => switchBleTab("remote"));
+    }
     el.btnBleRefreshFiles.addEventListener("click", () => loadBleSDFiles());
     el.btnBleAddBatchFiles.addEventListener("click", handleAddBatchFiles);
     el.btnBleClearBatch.addEventListener("click", () => {
@@ -5624,6 +5815,39 @@ void loop() {
     if (el.btnBleRemoteNext) {
       el.btnBleRemoteNext.addEventListener("click", handleBleRemoteNext);
     }
+    if (el.btnBleRemoteSync) {
+      el.btnBleRemoteSync.addEventListener("click", () => syncBleRemoteStatus());
+    }
+    if (el.btnBleLivePrev) {
+      el.btnBleLivePrev.addEventListener("click", () => handleBleRemotePrev());
+    }
+    if (el.btnBleLiveNext) {
+      el.btnBleLiveNext.addEventListener("click", () => handleBleRemoteNext());
+    }
+    if (el.btnBleLivePlayPause) {
+      el.btnBleLivePlayPause.addEventListener("click", () => handleBleRemotePlayPause());
+    }
+    if (el.btnBleLiveToggleSwap) {
+      el.btnBleLiveToggleSwap.addEventListener("click", () => handleBleRemoteToggleSwap());
+    }
+    if (el.btnBleLiveToggleInvert) {
+      el.btnBleLiveToggleInvert.addEventListener("click", () => handleBleRemoteToggleInvert());
+    }
+    if (el.btnBleLiveToggleSleep) {
+      el.btnBleLiveToggleSleep.addEventListener("click", () => handleBleRemoteToggleSleep());
+    }
+    if (el.bleRemoteLiveBrightness) {
+      el.bleRemoteLiveBrightness.addEventListener("input", () => handleLiveBrightnessChange());
+    }
+    document.querySelectorAll(".btn-bright-preset").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        const preset = parseInt(e.currentTarget.getAttribute("data-preset") || "60", 10);
+        if (el.bleRemoteLiveBrightness) {
+          el.bleRemoteLiveBrightness.value = preset.toString();
+          handleLiveBrightnessChange();
+        }
+      });
+    });
     const optBleFull = document.getElementById("bleOptVideoFull");
     const optBleFrame = document.getElementById("bleOptVideoFrame");
     if (optBleFull) optBleFull.addEventListener("change", updateBleModalFileInfo);
@@ -7507,10 +7731,12 @@ Para microcontroladores se recomienda usar clips de 2 a 5 segundos con los marca
     el.bleTabBtnBatch.classList.toggle("active", tab === "batch");
     el.bleTabBtnManager.classList.toggle("active", tab === "manager");
     el.bleTabBtnSettings.classList.toggle("active", tab === "settings");
+    if (el.bleTabBtnRemote) el.bleTabBtnRemote.classList.toggle("active", tab === "remote");
     el.blePaneUpload.style.display = tab === "upload" ? "block" : "none";
     el.blePaneBatch.style.display = tab === "batch" ? "block" : "none";
     el.blePaneManager.style.display = tab === "manager" ? "block" : "none";
     el.blePaneSettings.style.display = tab === "settings" ? "block" : "none";
+    if (el.blePaneRemote) el.blePaneRemote.style.display = tab === "remote" ? "block" : "none";
     if (tab === "upload") {
       el.btnBleStartUpload.style.display = "inline-flex";
       el.btnBleStartBatchUpload.style.display = "none";
@@ -7530,6 +7756,12 @@ Para microcontroladores se recomienda usar clips de 2 a 5 segundos con los marca
     } else if (tab === "settings") {
       el.btnBleStartUpload.style.display = "none";
       el.btnBleStartBatchUpload.style.display = "none";
+    } else if (tab === "remote") {
+      el.btnBleStartUpload.style.display = "none";
+      el.btnBleStartBatchUpload.style.display = "none";
+      if (bleUploader.isConnected) {
+        syncBleRemoteStatus();
+      }
     }
   }
   async function handleBleApplySettings() {
@@ -7589,6 +7821,159 @@ Para microcontroladores se recomienda usar clips de 2 a 5 segundos con los marca
     } catch (err) {
       showToast(`Error: ${err?.message || err}`);
     }
+  }
+  var livePlaybackPaused = false;
+  var liveIsSleeping = false;
+  var liveBrightnessDebounceTimer = null;
+  async function syncBleRemoteStatus() {
+    if (!bleUploader.isConnected) {
+      showToast("Conectando al ESP32 para sincronizar...");
+      try {
+        await bleUploader.requestDeviceAndConnect((p) => updateBleProgressUI(p));
+      } catch (err) {
+        showToast(`Error de conexi\xF3n BLE: ${err?.message || err}`);
+        return;
+      }
+    }
+    try {
+      if (el.btnBleRemoteSync) {
+        el.btnBleRemoteSync.disabled = true;
+        el.btnBleRemoteSync.textContent = "Leyendo...";
+      }
+      const status = await bleUploader.getDeviceStatus();
+      if (!status) {
+        showToast("No se pudo obtener respuesta de estado del ESP32");
+        return;
+      }
+      livePlaybackPaused = status.isPaused;
+      liveIsSleeping = status.isSleeping;
+      if (el.bleRemoteMediaTitle) {
+        el.bleRemoteMediaTitle.textContent = status.currentFileName || "Tarjeta MicroSD";
+      }
+      if (el.bleRemoteMediaMeta) {
+        el.bleRemoteMediaMeta.textContent = `Archivo ${status.photoIndex + 1} de ${status.photoCount} \u2022 ${status.isVideo ? "Animaci\xF3n" : "Foto fija"}`;
+      }
+      if (el.bleRemotePlaybackBadge) {
+        if (status.isSleeping) {
+          el.bleRemotePlaybackBadge.className = "ble-badge ble-badge-scanning";
+          el.bleRemotePlaybackBadge.textContent = "EN REPOSO (ATENUADO)";
+        } else if (status.isVideo && status.isPaused) {
+          el.bleRemotePlaybackBadge.className = "ble-badge ble-badge-idle";
+          el.bleRemotePlaybackBadge.textContent = "PAUSADO \u23F8";
+        } else {
+          el.bleRemotePlaybackBadge.className = "ble-badge ble-badge-connected";
+          el.bleRemotePlaybackBadge.textContent = status.isVideo ? "REPRODUCIENDO \u25B6" : "ACTIVO \u2714";
+        }
+      }
+      if (el.bleLivePlayPauseText) {
+        el.bleLivePlayPauseText.textContent = status.isPaused ? "Reanudar \u25B6" : "Pausar \u23F8";
+      }
+      if (el.bleLivePlayPauseIcon) {
+        el.bleLivePlayPauseIcon.textContent = status.isPaused ? "\u25B6" : "\u23F8";
+      }
+      if (el.bleLiveSwapStatus) {
+        el.bleLiveSwapStatus.textContent = status.swapBytes ? "SWAP: ON" : "SWAP: OFF";
+      }
+      if (el.bleLiveInvertStatus) {
+        el.bleLiveInvertStatus.textContent = status.invertDisplay ? "INV: ON" : "INV: OFF";
+      }
+      if (el.bleLiveSleepStatus) {
+        el.bleLiveSleepStatus.textContent = status.isSleeping ? "DESPERTAR" : "REPOSO";
+      }
+      const brightPct = Math.round(status.brightnessDuty / 255 * 100);
+      if (el.bleRemoteLiveBrightness) {
+        el.bleRemoteLiveBrightness.value = brightPct.toString();
+      }
+      if (el.bleRemoteLiveBrightLabel) {
+        el.bleRemoteLiveBrightLabel.textContent = `${brightPct}%`;
+      }
+      showToast("\u2714 Estado del ESP32 sincronizado en vivo");
+    } catch (err) {
+      showToast(`Error al consultar estado: ${err?.message || err}`);
+    } finally {
+      if (el.btnBleRemoteSync) {
+        el.btnBleRemoteSync.disabled = false;
+        el.btnBleRemoteSync.innerHTML = `
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
+        Sincronizar
+      `;
+      }
+    }
+  }
+  async function handleBleRemotePlayPause() {
+    try {
+      if (!bleUploader.isConnected) {
+        await bleUploader.requestDeviceAndConnect();
+      }
+      livePlaybackPaused = !livePlaybackPaused;
+      await bleUploader.sendPause(livePlaybackPaused);
+      if (el.bleLivePlayPauseText) {
+        el.bleLivePlayPauseText.textContent = livePlaybackPaused ? "Reanudar \u25B6" : "Pausar \u23F8";
+      }
+      if (el.bleLivePlayPauseIcon) {
+        el.bleLivePlayPauseIcon.textContent = livePlaybackPaused ? "\u25B6" : "\u23F8";
+      }
+      if (el.bleRemotePlaybackBadge) {
+        el.bleRemotePlaybackBadge.className = livePlaybackPaused ? "ble-badge ble-badge-idle" : "ble-badge ble-badge-connected";
+        el.bleRemotePlaybackBadge.textContent = livePlaybackPaused ? "PAUSADO \u23F8" : "REPRODUCIENDO \u25B6";
+      }
+      showToast(livePlaybackPaused ? "Reproducci\xF3n pausada \u23F8" : "Reproducci\xF3n reanudada \u25B6");
+    } catch (err) {
+      showToast(`Error: ${err?.message || err}`);
+    }
+  }
+  async function handleBleRemoteToggleSwap() {
+    try {
+      if (!bleUploader.isConnected) {
+        await bleUploader.requestDeviceAndConnect();
+      }
+      await bleUploader.sendToggleByteSwap();
+      showToast("ByteSwap alternado en pantalla ST7735S");
+      setTimeout(() => syncBleRemoteStatus(), 300);
+    } catch (err) {
+      showToast(`Error: ${err?.message || err}`);
+    }
+  }
+  async function handleBleRemoteToggleInvert() {
+    try {
+      if (!bleUploader.isConnected) {
+        await bleUploader.requestDeviceAndConnect();
+      }
+      await bleUploader.sendToggleInvert();
+      showToast("Inversi\xF3n de color alternada");
+      setTimeout(() => syncBleRemoteStatus(), 300);
+    } catch (err) {
+      showToast(`Error: ${err?.message || err}`);
+    }
+  }
+  async function handleBleRemoteToggleSleep() {
+    try {
+      if (!bleUploader.isConnected) {
+        await bleUploader.requestDeviceAndConnect();
+      }
+      liveIsSleeping = !liveIsSleeping;
+      await bleUploader.triggerSleep(liveIsSleeping);
+      showToast(liveIsSleeping ? "Modo reposo activado (pantalla atenuada)" : "Dispositivo reactivado a brillo activo");
+      setTimeout(() => syncBleRemoteStatus(), 400);
+    } catch (err) {
+      showToast(`Error: ${err?.message || err}`);
+    }
+  }
+  function handleLiveBrightnessChange() {
+    if (!el.bleRemoteLiveBrightness) return;
+    const pct = parseInt(el.bleRemoteLiveBrightness.value, 10) || 60;
+    if (el.bleRemoteLiveBrightLabel) {
+      el.bleRemoteLiveBrightLabel.textContent = `${pct}%`;
+    }
+    const duty = Math.round(pct / 100 * 255);
+    if (liveBrightnessDebounceTimer) {
+      clearTimeout(liveBrightnessDebounceTimer);
+    }
+    liveBrightnessDebounceTimer = setTimeout(() => {
+      if (bleUploader.isConnected) {
+        bleUploader.sendLiveBrightness(duty);
+      }
+    }, 40);
   }
   var currentSDFiles = [];
   var isLoadingSDFiles = false;
@@ -7673,9 +8058,24 @@ Para microcontroladores se recomienda usar clips de 2 a 5 segundos con los marca
       item.className = "ble-file-item";
       const left = document.createElement("div");
       left.className = "ble-file-item-left";
-      const icon = document.createElement("div");
-      icon.className = `ble-file-type-icon ${f.isVideo ? "video" : ""}`;
-      icon.textContent = f.isVideo ? "\u{1F3AC}" : "\u{1F5BC}\uFE0F";
+      const thumbBox = document.createElement("div");
+      thumbBox.className = "ble-file-thumb";
+      const cleanId = f.name.replace(/[^a-zA-Z0-9]/g, "_");
+      thumbBox.id = `thumb_${cleanId}`;
+      const placeholder = document.createElement("span");
+      placeholder.className = "ble-file-thumb-placeholder";
+      placeholder.textContent = f.isVideo ? "\u{1F3AC}" : "\u{1F5BC}\uFE0F";
+      thumbBox.appendChild(placeholder);
+      bleUploader.fetchThumbnail(f.name).then((dataUrl) => {
+        if (dataUrl) {
+          thumbBox.innerHTML = "";
+          const img = document.createElement("img");
+          img.src = dataUrl;
+          img.alt = f.name;
+          thumbBox.appendChild(img);
+        }
+      }).catch(() => {
+      });
       const info = document.createElement("div");
       info.className = "ble-file-item-info";
       const name = document.createElement("div");
@@ -7687,7 +8087,7 @@ Para microcontroladores se recomienda usar clips de 2 a 5 segundos con los marca
       meta.textContent = `${f.displaySize} ${f.isVideo ? `\u2022 Animaci\xF3n (~${f.totalFrames} f)` : "\u2022 Imagen fija"}`;
       info.appendChild(name);
       info.appendChild(meta);
-      left.appendChild(icon);
+      left.appendChild(thumbBox);
       left.appendChild(info);
       const actions = document.createElement("div");
       actions.className = "ble-file-item-actions";
