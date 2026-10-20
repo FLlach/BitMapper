@@ -29,16 +29,16 @@ void DisplayManager::init(const DeviceSettings &settings) {
   tft.setRotation(0); // 0 = Vertical 128x160
   tft.setSwapBytes(settings.swapBytes);
   tft.invertDisplay(settings.invertDisplay);
+  tft.fillScreen(TFT_BLACK); // Limpiar memoria gráfica (GRAM) antes de encender backlight
 
   // 4. Configurar retroiluminación PWM (LEDC)
   ledcSetup(TFT_BACKLIGHT_CHANNEL, TFT_BACKLIGHT_FREQ, TFT_BACKLIGHT_RES);
   ledcAttachPin(TFT_BLK_PIN, TFT_BACKLIGHT_CHANNEL);
   ledcWrite(TFT_BACKLIGHT_CHANNEL, currentDuty);
 
-  // 5. Inicializar DMA si está soportado en el hardware SPI
-  isDmaActive = tft.initDMA(false);
-  Serial.printf("[Display] Pantalla ST7735S iniciada (128x160). DMA: %s\n",
-                isDmaActive ? "ACTIVADO" : "DESACTIVADO (Lectura por bloques)");
+  // 5. Renderizado por bloques optimizado (DMA no soportado en C3)
+  isDmaActive = false;
+  Serial.println("[Display] Pantalla ST7735S iniciada (128x160). Modo chunks activo.");
 }
 
 void DisplayManager::setBrightness(uint8_t duty) {
@@ -74,28 +74,6 @@ void DisplayManager::clearScreen(uint16_t color) {
 }
 
 void DisplayManager::showCalibrationPattern() {
-  tft.fillRect(0, 0, 128, 40, TFT_RED);
-  tft.setTextColor(TFT_WHITE, TFT_RED);
-  tft.setTextSize(2);
-  tft.drawString("ROJO", 40, 12);
-
-  tft.fillRect(0, 40, 128, 40, TFT_GREEN);
-  tft.setTextColor(TFT_BLACK, TFT_GREEN);
-  tft.setTextSize(2);
-  tft.drawString("VERDE", 35, 52);
-
-  tft.fillRect(0, 80, 128, 40, TFT_BLUE);
-  tft.setTextColor(TFT_WHITE, TFT_BLUE);
-  tft.setTextSize(2);
-  tft.drawString("AZUL", 40, 92);
-
-  tft.fillRect(0, 120, 128, 40, TFT_WHITE);
-  tft.setTextColor(TFT_BLACK, TFT_WHITE);
-  tft.setTextSize(2);
-  tft.drawString("BLANCO", 28, 132);
-
-  delay(1200);
-
   tft.fillScreen(TFT_BLACK);
   tft.setTextColor(TFT_CYAN, TFT_BLACK);
   tft.setTextSize(2);

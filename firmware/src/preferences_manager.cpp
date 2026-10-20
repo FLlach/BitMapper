@@ -19,9 +19,9 @@ void PreferencesManager::load(DeviceSettings &settings) {
     if (settings.slideshowDelaySec < 1 || settings.slideshowDelaySec > 3600) {
       settings.slideshowDelaySec = 5;
     }
-    int tMode = prefs.getInt("transMode", (int)TRANSITION_FADE);
+    int tMode = prefs.getInt("transMode", (int)TRANSITION_NONE);
     if (tMode < 0 || tMode > 3) {
-      tMode = (int)TRANSITION_FADE;
+      tMode = (int)TRANSITION_NONE;
     }
     settings.transitionMode = (TransitionMode)tMode;
     settings.brightnessDuty = (uint8_t)prefs.getUChar("brightness", TFT_BACKLIGHT_DEFAULT_DUTY);

@@ -82,7 +82,7 @@ struct DeviceSettings {
   int videoFps = 15;
   bool slideshowEnabled = false;
   int slideshowDelaySec = 5;
-  TransitionMode transitionMode = TRANSITION_FADE;
+  TransitionMode transitionMode = TRANSITION_NONE;
   uint8_t brightnessDuty = TFT_BACKLIGHT_DEFAULT_DUTY;
   String lastFile = "";
 };
