@@ -16,6 +16,7 @@ public:
   void saveVideoFps(int fps);
   void saveSwapBytes(bool swap);
   void saveInvertDisplay(bool invert);
+  void saveSleepConfig(bool enabled, int timeoutSec, uint8_t dimDuty);
 
 private:
   Preferences prefs;

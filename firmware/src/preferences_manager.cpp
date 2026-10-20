@@ -25,13 +25,21 @@ void PreferencesManager::load(DeviceSettings &settings) {
     }
     settings.transitionMode = (TransitionMode)tMode;
     settings.brightnessDuty = (uint8_t)prefs.getUChar("brightness", TFT_BACKLIGHT_DEFAULT_DUTY);
+    settings.sleepEnabled = prefs.getBool("sleepOn", true);
+    settings.sleepTimeoutSec = prefs.getInt("sleepSec", 60);
+    if (settings.sleepTimeoutSec < 5 || settings.sleepTimeoutSec > 3600) {
+      settings.sleepTimeoutSec = 60;
+    }
+    settings.sleepBrightnessDuty = (uint8_t)prefs.getUChar("sleepDuty", 13);
     settings.lastFile = prefs.getString("lastFile", "");
     prefs.end();
 
-    Serial.printf("[NVS] Ajustes cargados: SwapBytes=%d, Invert=%d, FPS=%d, Slideshow=%d (%ds), Trans=%d, Brillo=%u, Ultimo='%s'\n",
+    Serial.printf("[NVS] Ajustes cargados: SwapBytes=%d, Invert=%d, FPS=%d, Slideshow=%d (%ds), Trans=%d, Brillo=%u, Sleep=%d (%ds, dim=%u), Ultimo='%s'\n",
                   settings.swapBytes, settings.invertDisplay, settings.videoFps,
                   settings.slideshowEnabled, settings.slideshowDelaySec,
-                  (int)settings.transitionMode, settings.brightnessDuty, settings.lastFile.c_str());
+                  (int)settings.transitionMode, settings.brightnessDuty,
+                  settings.sleepEnabled, settings.sleepTimeoutSec, settings.sleepBrightnessDuty,
+                  settings.lastFile.c_str());
   } else {
     Serial.println("[NVS] Sin preferencias previas. Usando valores predeterminados.");
   }
@@ -46,6 +54,9 @@ void PreferencesManager::save(const DeviceSettings &settings) {
     prefs.putInt("slideSec", settings.slideshowDelaySec);
     prefs.putInt("transMode", (int)settings.transitionMode);
     prefs.putUChar("brightness", settings.brightnessDuty);
+    prefs.putBool("sleepOn", settings.sleepEnabled);
+    prefs.putInt("sleepSec", settings.sleepTimeoutSec);
+    prefs.putUChar("sleepDuty", settings.sleepBrightnessDuty);
     if (settings.lastFile.length() > 0) {
       prefs.putString("lastFile", settings.lastFile);
     }
@@ -104,5 +115,16 @@ void PreferencesManager::saveInvertDisplay(bool invert) {
   if (prefs.begin("bitmapper", false)) {
     prefs.putBool("invDisp", invert);
     prefs.end();
+  }
+}
+
+void PreferencesManager::saveSleepConfig(bool enabled, int timeoutSec, uint8_t dimDuty) {
+  if (prefs.begin("bitmapper", false)) {
+    prefs.putBool("sleepOn", enabled);
+    prefs.putInt("sleepSec", timeoutSec);
+    prefs.putUChar("sleepDuty", dimDuty);
+    prefs.end();
+    Serial.printf("[NVS] Sleep config guardado: %s (%ds, dimDuty=%u)\n",
+                  enabled ? "ON" : "OFF", timeoutSec, dimDuty);
   }
 }

@@ -5,7 +5,8 @@ TouchHandler touchHandler;
 TouchHandler::TouchHandler()
     : tapCount(0), lastTapTime(0), lastButtonState(!TOUCH_ACTIVE_LEVEL),
       lastDebounceTime(0), pressStartTime(0), longPressTriggered(false),
-      bleHoldTriggered(false), lastCountdownSec(-1) {}
+      bleHoldTriggered(false), isSleeping(false), wakeTriggered(false),
+      lastCountdownSec(-1) {}
 
 void TouchHandler::init() {
   pinMode(ONBOARD_LED, OUTPUT);
@@ -42,30 +43,44 @@ void TouchHandler::loop() {
 
       // Evento: Botón presionado
       if (buttonState == TOUCH_ACTIVE_LEVEL) {
+        if (onActivity) onActivity();
         pressStartTime = millis();
         longPressTriggered = false;
         bleHoldTriggered = false;
         lastCountdownSec = -1;
-        unsigned long now = millis();
 
-        if (tapCount == 0) {
-          tapCount = 1;
-          lastTapTime = now;
-        } else if (tapCount < 5 && (now - lastTapTime) <= DOUBLE_TAP_WINDOW_MS) {
-          tapCount++;
-          lastTapTime = now;
+        if (isSleeping) {
+          wakeTriggered = true;
+          tapCount = 0;
+          flashLed(1, 40);
+          if (onWake) onWake();
+        } else {
+          wakeTriggered = false;
+          unsigned long now = millis();
+          if (tapCount == 0) {
+            tapCount = 1;
+            lastTapTime = now;
+          } else if (tapCount < 5 && (now - lastTapTime) <= DOUBLE_TAP_WINDOW_MS) {
+            tapCount++;
+            lastTapTime = now;
+          }
         }
       } else {
         // Evento: Botón soltado
-        unsigned long heldDuration = millis() - pressStartTime;
+        if (wakeTriggered) {
+          wakeTriggered = false;
+          tapCount = 0;
+        } else {
+          unsigned long heldDuration = millis() - pressStartTime;
 
-        if (bleHoldTriggered) {
-          tapCount = 0;
-        } else if (heldDuration >= 1200 && heldDuration < 6000) {
-          // Pulsación sostenida media (1.2s a 6s) -> Inversión de pantalla
-          tapCount = 0;
-          flashLed(3, 40);
-          if (onToggleInvert) onToggleInvert();
+          if (bleHoldTriggered) {
+            tapCount = 0;
+          } else if (heldDuration >= 1200 && heldDuration < 6000) {
+            // Pulsación sostenida media (1.2s a 6s) -> Inversión de pantalla
+            tapCount = 0;
+            flashLed(3, 40);
+            if (onToggleInvert) onToggleInvert();
+          }
         }
       }
     }
@@ -100,7 +115,7 @@ void TouchHandler::loop() {
   lastButtonState = currentButtonReading;
 
   // Evaluar toques cortos cuando vence la ventana
-  if (tapCount > 0 && !bleHoldTriggered &&
+  if (tapCount > 0 && !bleHoldTriggered && !wakeTriggered &&
       (millis() - lastTapTime) > DOUBLE_TAP_WINDOW_MS) {
     if ((millis() - pressStartTime) < 1200) {
       if (tapCount == 1) {

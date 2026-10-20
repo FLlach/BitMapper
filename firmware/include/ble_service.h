@@ -33,6 +33,10 @@ public:
   std::function<void(bool enabled, int delaySec)> onSlideshowChanged;
   std::function<void(TransitionMode mode)> onTransitionChanged;
   std::function<void(uint8_t duty)> onBrightnessChanged;
+  std::function<void(bool enabled, int timeoutSec, uint8_t dimDuty)> onSleepConfigChanged;
+  std::function<void()> onTriggerSleep;
+  std::function<void()> onTriggerWake;
+  std::function<void()> onActivity;
 
   void notifyControl(const String &msg);
 

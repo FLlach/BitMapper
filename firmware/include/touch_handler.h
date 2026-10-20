@@ -15,6 +15,11 @@ public:
   std::function<void()> onToggleInvert;
   std::function<void()> onCycleFps;
   std::function<void()> onToggleBle;
+  std::function<void()> onWake;
+  std::function<void()> onActivity;
+
+  void setSleeping(bool sleeping) { isSleeping = sleeping; }
+  bool getSleeping() const { return isSleeping; }
 
   void flashLed(int times, int durationMs = 30);
 
@@ -26,6 +31,8 @@ private:
   unsigned long pressStartTime;
   bool longPressTriggered;
   bool bleHoldTriggered;
+  bool isSleeping;
+  bool wakeTriggered;
   int lastCountdownSec;
 };
 

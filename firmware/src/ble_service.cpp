@@ -152,6 +152,7 @@ void BLEServiceManager::loop() {
 // -----------------------------------------------------------------------------
 void BLEServiceManager::handleControlCommand(const String &value) {
   lastBleActivityTime = millis();
+  if (onActivity) onActivity();
   Serial.printf("[BLE Control]: %s\n", value.c_str());
 
   if (value.startsWith("START:")) {
@@ -331,6 +332,42 @@ void BLEServiceManager::handleControlCommand(const String &value) {
     char buf[32];
     snprintf(buf, sizeof(buf), "BRIGHT_OK:%d", duty);
     notifyControl(buf);
+  } else if (value.startsWith("SLEEP_CFG:")) {
+    // Formato: SLEEP_CFG:<0|1>:<timeoutSec>:<sleepDuty>
+    int c1 = value.indexOf(':');
+    int c2 = value.indexOf(':', c1 + 1);
+    int c3 = value.indexOf(':', c2 + 1);
+    bool enabled = true;
+    int timeoutSec = 60;
+    int dimDuty = 13;
+
+    if (c2 != -1) {
+      enabled = (value.substring(c1 + 1, c2).toInt() != 0);
+      if (c3 != -1) {
+        timeoutSec = value.substring(c2 + 1, c3).toInt();
+        dimDuty = value.substring(c3 + 1).toInt();
+      } else {
+        timeoutSec = value.substring(c2 + 1).toInt();
+      }
+    } else {
+      enabled = (value.substring(c1 + 1).toInt() != 0);
+    }
+
+    if (timeoutSec < 5) timeoutSec = 5;
+    if (timeoutSec > 3600) timeoutSec = 3600;
+    if (dimDuty < 0) dimDuty = 0;
+    if (dimDuty > 255) dimDuty = 255;
+
+    if (onSleepConfigChanged) onSleepConfigChanged(enabled, timeoutSec, (uint8_t)dimDuty);
+    char buf[32];
+    snprintf(buf, sizeof(buf), "SLEEP_CFG_OK:%d:%d:%d", enabled ? 1 : 0, timeoutSec, dimDuty);
+    notifyControl(buf);
+  } else if (value == "SLEEP_NOW") {
+    if (onTriggerSleep) onTriggerSleep();
+    notifyControl("SLEEP_STATE_OK:SLEEP");
+  } else if (value == "WAKE_NOW") {
+    if (onTriggerWake) onTriggerWake();
+    notifyControl("SLEEP_STATE_OK:WAKE");
   } else if (value == "GET_CONFIG") {
     // Formato: CONFIG:<swapBytes>:<invert>:<fps>:<slideOn>:<slideSec>:<transMode>:<bright>
     // Se responderá desde main con los valores vigentes
@@ -343,6 +380,7 @@ void BLEServiceManager::handleControlCommand(const String &value) {
 // -----------------------------------------------------------------------------
 void BLEServiceManager::handleDataChunk(uint8_t *pData, size_t len) {
   lastBleActivityTime = millis();
+  if (onActivity) onActivity();
   if (!isUploading || !currentUploadFile) return;
 
   currentUploadFile.write(pData, len);

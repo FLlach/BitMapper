@@ -36,9 +36,35 @@ static int currentOrigH = IMAGE_HEIGHT;
 const int FPS_PRESETS[] = {5, 10, 15, 20, 24, 30};
 const int NUM_FPS_PRESETS = sizeof(FPS_PRESETS) / sizeof(FPS_PRESETS[0]);
 
+// Estado y funciones del Modo Reposo (Atenuación)
+static bool isSleeping = false;
+static unsigned long lastUserActivityTime = 0;
+
+void enterSleepMode();
+void wakeUpFromSleep();
+
 // Declaraciones de funciones
 void displayPhoto(int index, TransitionMode transition = TRANSITION_NONE);
 void cycleVideoFps();
+
+void enterSleepMode() {
+  if (isSleeping) return;
+  isSleeping = true;
+  touchHandler.setSleeping(true);
+  Serial.printf("[Power] Entrando en Modo Reposo (Atenuando brillo a %u)\n", currentSettings.sleepBrightnessDuty);
+  displayManager.fadeBacklight(currentSettings.brightnessDuty, currentSettings.sleepBrightnessDuty, 10);
+  displayManager.setBrightness(currentSettings.sleepBrightnessDuty);
+}
+
+void wakeUpFromSleep() {
+  lastUserActivityTime = millis();
+  if (!isSleeping) return;
+  isSleeping = false;
+  touchHandler.setSleeping(false);
+  Serial.printf("[Power] Saliendo de Modo Reposo. Restaurando brillo activo: %u\n", currentSettings.brightnessDuty);
+  displayManager.fadeBacklight(currentSettings.sleepBrightnessDuty, currentSettings.brightnessDuty, 8);
+  displayManager.setBrightness(currentSettings.brightnessDuty);
+}
 
 // -----------------------------------------------------------------------------
 // Mostrar Foto / Video desde MicroSD
@@ -204,8 +230,17 @@ void setup() {
     bleService.toggleBLE();
   };
 
+  touchHandler.onWake = [&]() {
+    wakeUpFromSleep();
+  };
+
+  touchHandler.onActivity = [&]() {
+    lastUserActivityTime = millis();
+  };
+
   // 7. Configurar Callbacks de BLE
   bleService.onFileUploaded = [&](const String &path) {
+    wakeUpFromSleep();
     sdManager.scanPhotos();
     int idx = sdManager.findPhotoIndex(path);
     delay(200);
@@ -213,6 +248,7 @@ void setup() {
   };
 
   bleService.onShowFile = [&](const String &path) {
+    wakeUpFromSleep();
     sdManager.scanPhotos();
     int idx = sdManager.findPhotoIndex(path);
     if (idx >= 0) {
@@ -221,6 +257,7 @@ void setup() {
   };
 
   bleService.onBeforeDelete = [&](const String &path) {
+    wakeUpFromSleep();
     if (currentVideoFile) {
       currentVideoFile.close();
     }
@@ -228,6 +265,7 @@ void setup() {
   };
 
   bleService.onFileDeleted = [&](const String &path) {
+    wakeUpFromSleep();
     sdManager.scanPhotos();
     if (sdManager.getPhotoCount() > 0) {
       if (currentPhotoIndex >= (int)sdManager.getPhotoCount()) {
@@ -240,16 +278,19 @@ void setup() {
   };
 
   bleService.onNextPhoto = [&]() {
+    wakeUpFromSleep();
     lastSlideshowTime = millis();
     displayPhoto(currentPhotoIndex + 1, currentSettings.transitionMode);
   };
 
   bleService.onPrevPhoto = [&]() {
+    wakeUpFromSleep();
     lastSlideshowTime = millis();
     displayPhoto(currentPhotoIndex - 1, currentSettings.transitionMode);
   };
 
   bleService.onFpsChanged = [&](int fps) {
+    wakeUpFromSleep();
     videoCurrentFps = fps;
     currentSettings.videoFps = fps;
     videoFrameIntervalMs = 1000 / max(1, videoCurrentFps);
@@ -257,6 +298,7 @@ void setup() {
   };
 
   bleService.onSlideshowChanged = [&](bool enabled, int delaySec) {
+    wakeUpFromSleep();
     currentSettings.slideshowEnabled = enabled;
     if (delaySec > 0) currentSettings.slideshowDelaySec = delaySec;
     lastSlideshowTime = millis();
@@ -264,6 +306,7 @@ void setup() {
   };
 
   bleService.onTransitionChanged = [&](TransitionMode mode) {
+    wakeUpFromSleep();
     currentSettings.transitionMode = mode;
     prefManager.saveTransitionMode(mode);
     displayManager.showToast("TRANSICION",
@@ -272,9 +315,32 @@ void setup() {
   };
 
   bleService.onBrightnessChanged = [&](uint8_t duty) {
+    wakeUpFromSleep();
     currentSettings.brightnessDuty = duty;
     displayManager.setBrightness(duty);
     prefManager.saveBrightness(duty);
+  };
+
+  bleService.onActivity = [&]() {
+    wakeUpFromSleep();
+  };
+
+  bleService.onSleepConfigChanged = [&](bool enabled, int timeoutSec, uint8_t dimDuty) {
+    currentSettings.sleepEnabled = enabled;
+    currentSettings.sleepTimeoutSec = timeoutSec;
+    currentSettings.sleepBrightnessDuty = dimDuty;
+    prefManager.saveSleepConfig(enabled, timeoutSec, dimDuty);
+    wakeUpFromSleep();
+    displayManager.showToast("MODO REPOSO",
+                             enabled ? "Ajustes guardados" : "Modo: DESACTIVADO");
+  };
+
+  bleService.onTriggerSleep = [&]() {
+    enterSleepMode();
+  };
+
+  bleService.onTriggerWake = [&]() {
+    wakeUpFromSleep();
   };
 
   // 8. Cargar archivo inicial o mostrar estado
@@ -296,6 +362,7 @@ void setup() {
   }
 
   lastSlideshowTime = millis();
+  lastUserActivityTime = millis();
 }
 
 // -----------------------------------------------------------------------------
@@ -319,10 +386,18 @@ void loop() {
     }
   }
 
+  // Verificación de inactividad para modo reposo (atenuación de brillo)
+  if (currentSettings.sleepEnabled && !isSleeping && !bleService.isUploadInProgress()) {
+    unsigned long timeoutMs = (unsigned long)currentSettings.sleepTimeoutSec * 1000;
+    if (millis() - lastUserActivityTime >= timeoutMs) {
+      enterSleepMode();
+    }
+  }
+
   // Si no hay una subida activa por BLE
   if (!bleService.isUploadInProgress()) {
-    // 1. Reproducción de Video Cuadro a Cuadro (pausado temporalmente si hay un Toast activo)
-    if (isCurrentFileVideo && currentVideoFile && !displayManager.isToastActive()) {
+    // 1. Reproducción de Video Cuadro a Cuadro (pausado temporalmente si hay un Toast activo o en Reposo)
+    if (isCurrentFileVideo && currentVideoFile && !displayManager.isToastActive() && !isSleeping) {
       if (millis() - lastFrameRenderTime >= videoFrameIntervalMs) {
         lastFrameRenderTime = millis();
         videoCurrentFrame = (videoCurrentFrame + 1) % videoTotalFrames;
@@ -338,8 +413,8 @@ void loop() {
       }
     }
 
-    // 2. Modo Diapositivas Automático (Punto 2)
-    if (currentSettings.slideshowEnabled && sdManager.getPhotoCount() > 1) {
+    // 2. Modo Diapositivas Automático (Punto 2) (pausado durante Reposo para fijar la foto atenuada)
+    if (currentSettings.slideshowEnabled && sdManager.getPhotoCount() > 1 && !isSleeping) {
       unsigned long intervalMs = (unsigned long)currentSettings.slideshowDelaySec * 1000;
       bool shouldAdvance = false;
 
