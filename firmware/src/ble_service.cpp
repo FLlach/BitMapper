@@ -248,12 +248,19 @@ void BLEServiceManager::handleControlCommand(const String &value) {
     target.trim();
     if (!target.startsWith("/")) target = "/" + target;
 
+    if (onBeforeDelete) {
+      onBeforeDelete(target);
+    }
+
     bool removed = sdManager.deletePhoto(target);
     String displayName = target.startsWith("/") ? target.substring(1) : target;
 
     if (removed) {
       notifyControl("DELETE_OK:" + displayName);
       displayManager.showToast("ELIMINADO", displayName.c_str());
+      if (onFileDeleted) {
+        onFileDeleted(target);
+      }
     } else {
       notifyControl("DELETE_FAIL:" + displayName);
     }

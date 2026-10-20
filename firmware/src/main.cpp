@@ -218,6 +218,25 @@ void setup() {
     }
   };
 
+  bleService.onBeforeDelete = [&](const String &path) {
+    if (currentVideoFile) {
+      currentVideoFile.close();
+    }
+    isCurrentFileVideo = false;
+  };
+
+  bleService.onFileDeleted = [&](const String &path) {
+    sdManager.scanPhotos();
+    if (sdManager.getPhotoCount() > 0) {
+      if (currentPhotoIndex >= (int)sdManager.getPhotoCount()) {
+        currentPhotoIndex = 0;
+      }
+      displayPhoto(currentPhotoIndex, currentSettings.transitionMode);
+    } else {
+      displayManager.showEmptySDMessage();
+    }
+  };
+
   bleService.onNextPhoto = [&]() {
     lastSlideshowTime = millis();
     displayPhoto(currentPhotoIndex + 1, currentSettings.transitionMode);

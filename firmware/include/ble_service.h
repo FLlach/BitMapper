@@ -25,6 +25,8 @@ public:
   // Callbacks para eventos del sistema
   std::function<void(const String &path)> onFileUploaded;
   std::function<void(const String &path)> onShowFile;
+  std::function<void(const String &path)> onBeforeDelete;
+  std::function<void(const String &path)> onFileDeleted;
   std::function<void()> onNextPhoto;
   std::function<void()> onPrevPhoto;
   std::function<void(int fps)> onFpsChanged;
