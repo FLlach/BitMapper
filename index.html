@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BitMapper Studio - ESP32 & Display Bitmap Generator</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' blob: data:; img-src 'self' data: blob: file:; media-src 'self' blob: file:; style-src 'self' 'unsafe-inline'; font-src 'self' data:;">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Header Bar -->
+  <header class="app-header">
+    <div class="brand-section">
+      <div class="brand-icon">BM</div>
+      <div class="brand-title">
+        BitMapper Studio
+        <span class="brand-tag">ESP32 & Displays</span>
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <button id="btnOpenFile" class="btn btn-primary" title="Abrir imagen o video (Ctrl+O)">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+        Abrir Archivo
+      </button>
+
+      <button id="btnPasteClipboard" class="btn" title="Pegar imagen desde portapapeles (Ctrl+V)">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>
+        Pegar
+      </button>
+
+      <select id="sampleSelect" title="Cargar ejemplo prediseñado" style="width: 140px;">
+        <option value="">Cargar Ejemplo...</option>
+        <option value="cyberpunk">Cyberpunk Art</option>
+        <option value="colorwheel">Rueda de Color</option>
+        <option value="testcard">Carta de Ajuste SMPTE</option>
+        <option value="microchip">Microchip ESP32</option>
+      </select>
+
+      <button id="btnHeaderBle" class="btn btn-primary" title="Cargar a ESP32 vía Bluetooth LE (Ctrl+B)" style="background: rgba(6, 182, 212, 0.15); border-color: rgba(6, 182, 212, 0.4); color: var(--accent-cyan);">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7 7 10 10-5 5V2l5 5L7 17"></path></svg>
+        📡 Enviar por BLE
+      </button>
+
+      <button id="btnHeaderExport" class="btn btn-accent" title="Exportar resultado (Ctrl+S)">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        Exportar
+      </button>
+    </div>
+  </header>
+
+  <!-- App Body Container -->
+  <div class="app-container">
+    <!-- Sidebar Control Panel -->
+    <aside class="sidebar">
+      <!-- Media Source Info -->
+      <section class="sidebar-section">
+        <div class="section-header">
+          <span class="section-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+            Archivo Fuente
+          </span>
+          <span id="sourceTypeBadge" class="val-badge">IMAGEN</span>
+        </div>
+        <div style="font-size: 12px; color: var(--text-dim); line-height: 1.5;" id="sourceDetails">
+          Arrastra una foto o video aquí, o pulsa "Abrir Archivo".
+        </div>
+      </section>
+
+      <!-- Target Display Resolution -->
+      <section class="sidebar-section">
+        <div class="section-header">
+          <span class="section-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+            Pantalla Destino & Resolución
+          </span>
+        </div>
+
+        <div class="control-group">
+          <label class="control-label">Preset de Pantalla</label>
+          <select id="presetSelect"></select>
+        </div>
+
+        <div class="control-group">
+          <label class="control-label">Resolución (W x H)</label>
+          <div class="row-inputs">
+            <input type="number" id="inputWidth" value="240" min="8" max="4096">
+            <span style="color: var(--text-dim); font-size: 12px;">×</span>
+            <input type="number" id="inputHeight" value="240" min="8" max="4096">
+            <button id="btnSwapOrientation" class="swap-btn" title="Alternar Orientación (Horizontal / Vertical)">⇄</button>
+          </div>
+        </div>
+
+        <div class="row-2col">
+          <div class="control-group">
+            <label class="control-label">Ajuste de Escala</label>
+            <select id="scalingMode">
+              <option value="contain">Contain (Mantener Aspecto)</option>
+              <option value="cover" selected>Cover (Rellenar / Recortar)</option>
+              <option value="stretch">Stretch (Estirar)</option>
+              <option value="center">Center 1:1</option>
+            </select>
+          </div>
+
+          <div class="control-group">
+            <label class="control-label">Color Fondo</label>
+            <input type="color" id="bgColorPicker" value="#000000" style="height: 35px; padding: 2px; cursor: pointer; width: 100%; border: 1px solid var(--border-color); background: var(--bg-tertiary); border-radius: var(--radius-sm);">
+          </div>
+        </div>
+      </section>
+
+      <!-- Color Format & Dithering -->
+      <section class="sidebar-section">
+        <div class="section-header">
+          <span class="section-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a7 7 0 0 1 7 7c0 5-7 13-7 13S5 14 5 9a7 7 0 0 1 7-7z"></path></svg>
+            Formato de Color & Dither
+          </span>
+        </div>
+
+        <div class="control-group">
+          <label class="control-label">Profundidad / Formato de Color</label>
+          <select id="colorFormatSelect"></select>
+        </div>
+
+        <div class="row-2col">
+          <div class="control-group">
+            <label class="control-label">Endianness</label>
+            <select id="endianSelect">
+              <option value="big" selected>Big-Endian (MSB first - ST7789 SPI)</option>
+              <option value="little">Little-Endian (LSB first)</option>
+            </select>
+          </div>
+
+          <div class="control-group">
+            <label class="control-label">Algoritmo Dithering</label>
+            <select id="ditherSelect"></select>
+          </div>
+        </div>
+
+        <div class="checkbox-row">
+          <span>Invertir orden de Bytes (Byte Swap)</span>
+          <label class="switch">
+            <input type="checkbox" id="swapBytesCheckbox">
+            <span class="slider-toggle"></span>
+          </label>
+        </div>
+
+        <div class="checkbox-row">
+          <span>Invertir Colores / Negativo</span>
+          <label class="switch">
+            <input type="checkbox" id="invertColorsCheckbox">
+            <span class="slider-toggle"></span>
+          </label>
+        </div>
+      </section>
+
+      <!-- Image Adjustments & Transforms -->
+      <section class="sidebar-section">
+        <div class="section-header">
+          <span class="section-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20v-6M6 20V10M18 20V4"></path></svg>
+            Ajustes & Transformación
+          </span>
+        </div>
+
+        <div class="row-2col" style="margin-bottom: 12px;">
+          <div class="control-group">
+            <label class="control-label">Rotación</label>
+            <select id="rotationSelect">
+              <option value="0">0°</option>
+              <option value="90">90° Horario</option>
+              <option value="180">180°</option>
+              <option value="270">270° (90° Antihorario)</option>
+            </select>
+          </div>
+
+          <div class="control-group">
+            <label class="control-label">Volteo</label>
+            <div style="display: flex; gap: 6px;">
+              <button id="btnFlipH" class="btn" style="flex: 1;" title="Voltear Horizontal">↔ H</button>
+              <button id="btnFlipV" class="btn" style="flex: 1;" title="Voltear Vertical">↕ V</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <div class="control-label">
+            <span>Brillo</span>
+            <span id="brightnessVal" class="val-badge">0</span>
+          </div>
+          <input type="range" id="sliderBrightness" min="-100" max="100" value="0">
+        </div>
+
+        <div class="control-group">
+          <div class="control-label">
+            <span>Contraste</span>
+            <span id="contrastVal" class="val-badge">0</span>
+          </div>
+          <input type="range" id="sliderContrast" min="-100" max="100" value="0">
+        </div>
+
+        <div class="control-group">
+          <div class="control-label">
+            <span>Gamma</span>
+            <span id="gammaVal" class="val-badge">1.0</span>
+          </div>
+          <input type="range" id="sliderGamma" min="0.2" max="3.0" step="0.1" value="1.0">
+        </div>
+
+        <div class="control-group" id="thresholdGroup" style="display: none;">
+          <div class="control-label">
+            <span>Umbral Binarización (Monocromo)</span>
+            <span id="thresholdVal" class="val-badge">128</span>
+          </div>
+          <input type="range" id="sliderThreshold" min="0" max="255" value="128">
+        </div>
+      </section>
+
+      <!-- Video Controls (Conditional) -->
+      <section class="sidebar-section" id="videoSection" style="display: none;">
+        <div class="section-header">
+          <span class="section-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
+            Secuencia de Video (ESP32)
+          </span>
+          <span class="val-badge" id="videoDurationBadge">0.0s</span>
+        </div>
+
+        <div class="row-2col">
+          <div class="control-group">
+            <label class="control-label">FPS Objetivo</label>
+            <select id="videoTargetFps">
+              <option value="5">5 FPS (Ahorro Flash)</option>
+              <option value="10">10 FPS (Animación fluida)</option>
+              <option value="15" selected>15 FPS (Recomendado ST7789)</option>
+              <option value="20">20 FPS</option>
+              <option value="24">24 FPS (Cinemático)</option>
+              <option value="30">30 FPS (Alto consumo)</option>
+            </select>
+          </div>
+
+          <div class="control-group">
+            <label class="control-label">Modo Exportación</label>
+            <select id="videoExportMode">
+              <option value="single">Fotograma Actual</option>
+              <option value="sequence" selected>Secuencia Completa (Loop)</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="font-size: 11px; color: var(--text-muted); background: var(--bg-tertiary); padding: 8px 10px; border-radius: 6px; line-height: 1.5;" id="videoStatsBox">
+          Fotogramas en rango: <strong id="videoTotalFrames">0</strong> | Memoria Flash est: <strong id="videoEstFlash">0 KB</strong>
+        </div>
+      </section>
+
+      <!-- Export Configuration -->
+      <section class="sidebar-section">
+        <div class="section-header">
+          <span class="section-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            Opciones de Exportación
+          </span>
+        </div>
+
+        <div class="control-group">
+          <label class="control-label">Formato de Exportación</label>
+          <select id="exportFormatSelect"></select>
+        </div>
+
+        <div class="control-group">
+          <label class="control-label">Nombre de Variable / Array C++</label>
+          <input type="text" id="variableNameInput" value="bitmap_data">
+        </div>
+
+        <div class="row-2col">
+          <div class="checkbox-row" style="margin-top: 6px;">
+            <span>Usar PROGMEM (Flash)</span>
+            <label class="switch">
+              <input type="checkbox" id="progmemCheckbox" checked>
+              <span class="slider-toggle"></span>
+            </label>
+          </div>
+
+          <div class="control-group">
+            <label class="control-label">Datos por fila</label>
+            <select id="itemsPerRowSelect">
+              <option value="8">8 por fila</option>
+              <option value="12">12 por fila</option>
+              <option value="16" selected>16 por fila</option>
+              <option value="32">32 por fila</option>
+            </select>
+          </div>
+        </div>
+
+        <button id="btnExportMain" class="btn btn-accent" style="width: 100%; padding: 12px; margin-top: 10px; font-size: 14px;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+          Generar & Exportar Bitmap
+        </button>
+
+        <button id="btnBleSendSidebar" class="btn" style="width: 100%; padding: 10px; margin-top: 8px; border-color: rgba(6, 182, 212, 0.4); background: rgba(6, 182, 212, 0.1); color: var(--accent-cyan); font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7 7 10 10-5 5V2l5 5L7 17"></path></svg>
+          Cargar a ESP32 por Bluetooth
+        </button>
+      </section>
+    </aside>
+
+    <!-- Center Viewport & Preview -->
+    <main class="viewport-area">
+      <!-- Tabs Navigation -->
+      <nav class="viewport-tabs">
+        <div class="tab-nav">
+          <button class="tab-btn active" data-tab="tab-simulator">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+            Simulador de Pantalla
+          </button>
+          <button class="tab-btn" data-tab="tab-compare">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="12" y1="3" x2="12" y2="21"></line></svg>
+            Comparar (Original vs Bitmap)
+          </button>
+          <button class="tab-btn" data-tab="tab-code">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+            Código C/C++ Generado
+          </button>
+          <button class="tab-btn" data-tab="tab-esp32">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+            Ejemplos ESP32 Arduino
+          </button>
+        </div>
+
+        <div class="tab-actions">
+          <!-- Zoom Controls -->
+          <span style="font-size: 11px; color: var(--text-dim); margin-right: 4px;">ZOOM:</span>
+          <select id="zoomSelect" style="width: 80px; padding: 4px 6px; font-size: 12px;">
+            <option value="1">100%</option>
+            <option value="2" selected>200%</option>
+            <option value="3">300%</option>
+            <option value="4">400%</option>
+            <option value="6">600%</option>
+            <option value="8">800%</option>
+          </select>
+
+          <!-- Toggle Pixel Grid -->
+          <button id="btnToggleGrid" class="btn btn-icon" title="Activar/desactivar cuadrícula de píxeles">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line><line x1="15" y1="3" x2="15" y2="21"></line><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line></svg>
+          </button>
+
+          <!-- Toggle Bezel Frame -->
+          <button id="btnToggleBezel" class="btn btn-icon" title="Mostrar/ocultar marco físico de pantalla">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="4" ry="4"></rect><path d="M1 10h22"></path></svg>
+          </button>
+        </div>
+      </nav>
+
+      <!-- Tab 1: Simulator View -->
+      <div id="tab-simulator" class="tab-content active">
+        <div class="canvas-viewport" id="canvasViewport">
+          <div class="hardware-bezel square" id="hardwareBezel">
+            <div class="bezel-screen-glass" id="bezelScreenGlass">
+              <canvas id="targetCanvas" width="240" height="240"></canvas>
+            </div>
+            <div class="bezel-label" id="bezelLabel">ST7789 IPS LCD (240x240)</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 2: Comparison View -->
+      <div id="tab-compare" class="tab-content">
+        <div class="comparison-container">
+          <div class="compare-card">
+            <div class="compare-title">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path><line x1="4" y1="22" x2="4" y2="15"></line></svg>
+              Imagen / Video Original
+            </div>
+            <div class="compare-wrapper">
+              <canvas id="originalCanvas"></canvas>
+            </div>
+          </div>
+
+          <div class="compare-card">
+            <div class="compare-title">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle></svg>
+              Bitmap Cuantizado (Pantalla)
+            </div>
+            <div class="compare-wrapper">
+              <canvas id="compareTargetCanvas"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 3: Generated Code Preview -->
+      <div id="tab-code" class="tab-content">
+        <div class="code-tab-container">
+          <div class="code-header-bar">
+            <span id="codePreviewTitle">bitmap_data.h (C/C++ Header)</span>
+            <button id="btnCopyCode" class="btn btn-primary" style="padding: 4px 10px; font-size: 11px;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+              Copiar Código
+            </button>
+          </div>
+          <div class="code-editor-box">
+            <pre><code id="codeOutput">// Selecciona un archivo para ver el código generado</code></pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 4: ESP32 Sketches -->
+      <div id="tab-esp32" class="tab-content">
+        <div class="code-tab-container">
+          <div class="code-header-bar">
+            <div style="display: flex; gap: 8px;">
+              <button class="btn sketch-subtab active" data-sketch="tft_espi">TFT_eSPI (ST7789/ILI9341)</button>
+              <button class="btn sketch-subtab" data-sketch="adafruit_gfx">Adafruit_GFX</button>
+              <button class="btn sketch-subtab" data-sketch="lovyangfx">LovyanGFX (DMA Rápido)</button>
+              <button class="btn sketch-subtab" data-sketch="fs_binary">Lectura .BIN (LittleFS / SD)</button>
+            </div>
+            <button id="btnCopySketch" class="btn btn-primary" style="padding: 4px 10px; font-size: 11px;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+              Copiar Sketch
+            </button>
+          </div>
+          <div class="code-editor-box">
+            <pre><code id="sketchOutput">// Código Arduino para tu pantalla</code></pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- Video Bottom Timeline Bar -->
+      <div class="video-timeline-bar" id="videoTimelineBar">
+        <div class="timeline-scrubber">
+          <button id="btnVideoPlayPause" class="btn btn-icon" title="Reproducir / Pausar (Espacio)">
+            <svg id="playIcon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+            <svg id="pauseIcon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display: none;"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+          </button>
+
+          <button id="btnPrevFrame" class="btn btn-icon" title="Fotograma Anterior (Flecha Izq)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="19 20 9 12 19 4 19 20"></polygon><line x1="5" y1="19" x2="5" y2="5"></line></svg>
+          </button>
+
+          <button id="btnNextFrame" class="btn btn-icon" title="Fotograma Siguiente (Flecha Der)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19"></line></svg>
+          </button>
+
+          <div class="timeline-track-container">
+            <input type="range" id="videoScrubber" min="0" max="100" value="0" step="0.01">
+          </div>
+
+          <div class="time-display">
+            <span id="currentTimeLabel">00:00.00</span> / <span id="totalTimeLabel">00:00.00</span>
+            (<span id="currentFrameNum">F: 0</span>)
+          </div>
+        </div>
+
+        <div class="timeline-buttons">
+          <div class="in-out-controls">
+            <button id="btnSetInPoint" class="btn" style="font-size: 11px; padding: 4px 8px;">[ Fijar Inicio (In)</button>
+            <button id="btnSetOutPoint" class="btn" style="font-size: 11px; padding: 4px 8px;">Fijar Fin (Out) ]</button>
+            <button id="btnResetRange" class="btn" style="font-size: 11px; padding: 4px 8px;">Restablecer Rango</button>
+            <span id="rangeDisplay" style="font-size: 11px; color: var(--text-dim); margin-left: 8px;">Rango: Completo</span>
+          </div>
+
+          <div class="timeline-playback">
+            <label class="switch" style="width: 30px; height: 16px;">
+              <input type="checkbox" id="videoLoopCheckbox" checked>
+              <span class="slider-toggle"></span>
+            </label>
+            <span style="font-size: 11px; color: var(--text-muted); margin-left: 6px;">Bucle (Loop)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Status Bar -->
+      <footer class="status-bar">
+        <div class="status-left">
+          <div class="status-item">
+            <span class="status-indicator"></span>
+            <span id="statusReady">Listo</span>
+          </div>
+          <div class="status-item" id="statusDim">
+            Resolución: 240 × 240 px
+          </div>
+          <div class="status-item" id="statusFormat">
+            RGB565 (16-bit)
+          </div>
+        </div>
+
+        <div class="status-right">
+          <div class="status-item" id="statusMemory">
+            Memoria Flash: 115.2 KB
+          </div>
+          <div class="status-item" id="statusPixelCoord">
+            X: 0, Y: 0
+          </div>
+        </div>
+      </footer>
+    </main>
+  </div>
+
+  <!-- Hidden Elements -->
+  <input type="file" id="hiddenFileInput" accept="image/*,video/*" style="display: none;">
+  <input type="file" id="hiddenBatchFileInput" accept="image/*,.bin" multiple style="display: none;">
+  <video id="hiddenVideo" style="display: none;" playsinline muted></video>
+
+  <!-- Pixel Inspector Floating Tooltip -->
+  <div class="pixel-inspector" id="pixelInspector">
+    <span class="pixel-color-swatch" id="inspectorSwatch"></span>
+    <span id="inspectorText">X: 0, Y: 0 | RGB: (0, 0, 0) | RGB565: 0x0000</span>
+  </div>
+
+  <!-- Drag and drop full window overlay -->
+  <div class="drag-overlay" id="dragOverlay">
+    Suelta la imagen o video aquí para procesar
+  </div>
+
+  <!-- Modal: Transmisión Bluetooth LE a ESP32 -->
+  <div class="modal-overlay" id="bleModalOverlay">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-cyan)" stroke-width="2"><path d="m7 7 10 10-5 5V2l5 5L7 17"></path></svg>
+          Cargar .BIN a ESP32 vía Bluetooth LE
+        </div>
+        <button class="modal-close-btn" id="btnBleCloseModal" title="Cerrar ventana">&times;</button>
+      </div>
+
+      <!-- Modal Tabs Switcher -->
+      <div class="ble-tabs-nav">
+        <button class="ble-tab-btn active" id="bleTabBtnUpload" data-ble-tab="upload">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+          Subir Archivo Actual
+        </button>
+        <button class="ble-tab-btn" id="bleTabBtnBatch" data-ble-tab="batch">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
+          Carga por Lote (Múltiples)
+        </button>
+        <button class="ble-tab-btn" id="bleTabBtnManager" data-ble-tab="manager">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+          Archivos en MicroSD (Eliminar)
+        </button>
+        <button class="ble-tab-btn" id="bleTabBtnSettings" data-ble-tab="settings">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+          Ajustes y Diapositivas
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Pestaña 1: Carga de archivo actual -->
+        <div id="blePaneUpload">
+          <!-- File details card -->
+          <div class="ble-card">
+            <div class="ble-card-title">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+              Archivo a Transmitir
+            </div>
+            <div class="ble-file-info">
+              <div>
+                <div class="ble-filename" id="bleTargetFilename">bitmap_data.bin</div>
+                <div class="ble-filemeta" id="bleTargetFilemeta">240 × 320 px | RGB565 | ~153.6 KB</div>
+              </div>
+              <button id="btnBlePickLocalBin" class="btn" style="font-size: 11px; padding: 5px 10px;" title="Cargar otro archivo .bin existente en el ordenador">
+                Elegir .bin del disco...
+              </button>
+            </div>
+
+            <!-- Opciones de video para transmisión BLE -->
+            <div id="bleVideoModeContainer" style="display: none; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-color, #333);">
+              <div style="font-size: 11px; font-weight: 600; color: var(--text-main, #eee); margin-bottom: 6px;">
+                Contenido de video detectado:
+              </div>
+              <div style="display: flex; gap: 16px; font-size: 12px;">
+                <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                  <input type="radio" name="bleVideoOption" id="bleOptVideoFull" value="full" checked>
+                  <span>Video completo (Animación fluida)</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                  <input type="radio" name="bleVideoOption" id="bleOptVideoFrame" value="frame">
+                  <span>Solo 1 fotograma actual</span>
+                </label>
+              </div>
+              <div id="bleVideoStatsText" style="font-size: 11px; color: var(--accent-cyan, #06b6d4); margin-top: 5px;"></div>
+              <div id="bleVideoWarningBox" style="display: none; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 6px; padding: 7px 10px; margin-top: 8px; font-size: 11px; color: #fbbf24; line-height: 1.4;">
+                ⚠️ <strong>Rango extenso detectado (<span id="bleVideoWarnDuration">0</span>s):</strong><br>
+                Para pantallas de microcontroladores vía Bluetooth, se recomienda seleccionar un fragmento corto de <strong>2 a 6 segundos</strong> usando los marcadores <strong>[ In / Out ]</strong> en la línea de tiempo.
+              </div>
+            </div>
+
+            <!-- Opción de cabecera BMPR para ESP32 -->
+            <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-color, #333);">
+              <label style="display: flex; align-items: center; gap: 8px; font-size: 11px; cursor: pointer; color: var(--text-dim);">
+                <input type="checkbox" id="bleOptBmprHeader" checked>
+                <span style="color: var(--text-main); font-weight: 500;">Incluir cabecera BMPR con metadatos (Recomendado para ESP32)</span>
+              </label>
+              <div style="font-size: 10px; color: var(--text-dim); margin-left: 22px; margin-top: 2px;">
+                Permite al ESP32 detectar dimensiones exactas, FPS y número de cuadros sin desbordamiento.
+              </div>
+            </div>
+          </div>
+
+          <!-- Connection and Device Status -->
+          <div class="ble-card" style="margin-top: 14px;">
+            <div class="ble-card-header-row">
+              <div class="ble-card-title">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg>
+                Dispositivo ESP32 Destino
+              </div>
+              <span class="ble-badge ble-badge-idle" id="bleStatusBadge">DESCONECTADO</span>
+            </div>
+
+            <div class="ble-device-name" id="bleDeviceNameLabel">
+              BitMapper-ESP32 (Servicio GATT 4fafc201...)
+            </div>
+
+            <!-- Progress Bar -->
+            <div class="ble-progress-section">
+              <div class="ble-progress-header">
+                <span id="bleProgressStatusText">Listo para transmitir</span>
+                <span id="bleProgressPercent">0%</span>
+              </div>
+              <div class="ble-progress-track">
+                <div class="ble-progress-bar" id="bleProgressBar" style="width: 0%;"></div>
+              </div>
+              <div class="ble-progress-footer">
+                <span id="bleBytesTransferred">0 KB / 0 KB</span>
+                <span id="bleTransferSpeed">0.0 KB/s</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tip Box -->
+          <div class="ble-tip-box" style="margin-top: 14px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-cyan)" stroke-width="2" style="flex-shrink: 0;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+            <div>
+              El archivo se guardará en la tarjeta MicroSD y se visualizará inmediatamente en la pantalla ST7735S.
+            </div>
+          </div>
+        </div>
+
+        <!-- Pestaña 2: Carga por Lote (Múltiples Imágenes) -->
+        <div id="blePaneBatch" style="display: none;">
+          <div class="ble-card">
+            <div class="ble-card-header-row">
+              <div class="ble-card-title">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+                Cola de Carga por Lote (MicroSD)
+              </div>
+              <div style="display: flex; gap: 8px;">
+                <button id="btnBleAddBatchFiles" class="btn btn-accent" style="font-size: 11px; padding: 5px 12px; display: flex; align-items: center; gap: 6px;">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                  Añadir Imágenes...
+                </button>
+                <button id="btnBleClearBatch" class="btn" style="font-size: 11px; padding: 5px 10px;" title="Vaciar cola de imágenes">
+                  Vaciar
+                </button>
+              </div>
+            </div>
+
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">
+              Cada imagen se convertirá a la resolución (<strong id="bleBatchResLabel" style="color: var(--accent-cyan);">128 × 160 px</strong>) y formato <strong id="bleBatchFormatLabel" style="color: var(--accent-cyan);">RGB565</strong> para guardarse en la MicroSD.
+            </div>
+
+            <!-- Progreso del lote activo -->
+            <div id="bleBatchProgressBox" style="display: none; margin-top: 10px; padding: 10px; background: rgba(6, 182, 212, 0.08); border: 1px solid rgba(6, 182, 212, 0.25); border-radius: 6px;">
+              <div style="display: flex; justify-content: space-between; font-size: 12px; font-weight: 600; color: #fff; margin-bottom: 6px;">
+                <span id="bleBatchOverallStatus">Transmitiendo imagen 1 de 5...</span>
+                <span id="bleBatchOverallPercent" style="color: var(--accent-cyan);">20%</span>
+              </div>
+              <div class="ble-progress-track" style="height: 6px; margin-bottom: 6px;">
+                <div class="ble-progress-bar" id="bleBatchOverallBar" style="width: 20%; background: linear-gradient(90deg, var(--accent-cyan), var(--accent-blue));"></div>
+              </div>
+              <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted);">
+                <span id="bleBatchFileStatus">Enviando foto1.bin...</span>
+                <span id="bleBatchSpeed">0.0 KB/s</span>
+              </div>
+            </div>
+
+            <!-- Lista de archivos en cola -->
+            <div class="ble-batch-files-container" id="bleBatchFilesContainer" style="margin-top: 12px; max-height: 230px; overflow-y: auto;">
+              <div class="ble-files-placeholder" id="bleBatchPlaceholder">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                <div>No hay imágenes añadidas al lote</div>
+                <div style="font-size: 11px; color: var(--text-muted);">Haz clic en "Añadir Imágenes..." o arrastra y suelta fotos aquí</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pestaña 3: Gestor de Archivos en la MicroSD -->
+        <div id="blePaneManager" style="display: none;">
+          <div class="ble-manager-toolbar">
+            <div class="ble-manager-summary">
+              <span id="bleManagerStatusText">Conecta al ESP32 para ver los archivos</span>
+              <span class="ble-badge ble-badge-idle" id="bleManagerBadge">0 ARCHIVOS</span>
+            </div>
+            <button id="btnBleRefreshFiles" class="btn btn-primary" style="font-size: 11px; padding: 5px 12px; display: flex; align-items: center; gap: 6px;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+              Actualizar Lista
+            </button>
+          </div>
+
+          <div class="ble-files-container" id="bleFilesContainer">
+            <div class="ble-files-placeholder" id="bleFilesPlaceholder">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" stroke-width="1.5"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg>
+              <div>Conecta al ESP32 para explorar y eliminar archivos .BIN de tu tarjeta MicroSD</div>
+              <button id="btnBleConnectFromManager" class="btn btn-accent" style="font-size: 11px; padding: 6px 14px; margin-top: 6px;">
+                Conectar ESP32
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pestaña 4: Ajustes del Dispositivo y Diapositivas (Puntos 2 y 3) -->
+        <div id="blePaneSettings" style="display: none;">
+          <div class="ble-card">
+            <div class="ble-card-title">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+              Modo Diapositivas Automático (Slideshow)
+            </div>
+            <div style="font-size: 12px; color: var(--text-dim); margin-bottom: 12px;">
+              Permite al ESP32 ciclar automáticamente por todas las fotos y animaciones guardadas en la tarjeta MicroSD.
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; background: rgba(255,255,255,0.03); padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border-color);">
+              <div>
+                <div style="font-weight: 600; font-size: 13px;">Activar Pase de Diapositivas</div>
+                <div style="font-size: 11px; color: var(--text-dim);">Avanza automáticamente tras el tiempo configurado</div>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="bleSettingSlideshow">
+                <span class="slider-toggle"></span>
+              </label>
+            </div>
+
+            <div class="control-group">
+              <label class="control-label" style="display: flex; justify-content: space-between;">
+                <span>Tiempo de espera entre fotos</span>
+                <span id="bleSlideIntervalLabel" style="color: var(--accent-cyan); font-weight: 600;">5 segundos</span>
+              </label>
+              <select id="bleSettingSlideInterval" style="width: 100%; padding: 8px; border-radius: 6px; background: var(--bg-tertiary); color: var(--text-main); border: 1px solid var(--border-color);">
+                <option value="2">2 segundos (Ultra rápido)</option>
+                <option value="3">3 segundos (Rápido)</option>
+                <option value="5" selected>5 segundos (Recomendado)</option>
+                <option value="8">8 segundos</option>
+                <option value="10">10 segundos (Tranquilo)</option>
+                <option value="15">15 segundos</option>
+                <option value="30">30 segundos</option>
+                <option value="60">1 minuto (Cuadro de fotos)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="ble-card" style="margin-top: 14px;">
+            <div class="ble-card-title">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+              Efecto de Transición Visual
+            </div>
+            <div style="font-size: 12px; color: var(--text-dim); margin-bottom: 12px;">
+              Elige cómo cambia la pantalla al pasar de una imagen a la siguiente.
+            </div>
+
+            <div class="control-group">
+              <label class="control-label">Modo de Transición</label>
+              <select id="bleSettingTransition" style="width: 100%; padding: 8px; border-radius: 6px; background: var(--bg-tertiary); color: var(--text-main); border: 1px solid var(--border-color);">
+                <option value="1" selected>🌓 Desvanecimiento Suave (Fade PWM - Recomendado)</option>
+                <option value="0">⚡ Corte Directo (Instantáneo sin pausa)</option>
+                <option value="2">⬇️ Cortina Vertical (Wipe Down)</option>
+                <option value="3">➡️ Barrido Lateral (Wipe Right)</option>
+              </select>
+            </div>
+
+            <div class="control-group" style="margin-top: 12px;">
+              <label class="control-label" style="display: flex; justify-content: space-between;">
+                <span>Brillo de Pantalla (Retroiluminación)</span>
+                <span id="bleSettingBrightnessLabel" style="color: var(--accent-cyan); font-weight: 600;">60%</span>
+              </label>
+              <input type="range" id="bleSettingBrightness" min="20" max="100" value="60" style="width: 100%;">
+            </div>
+          </div>
+
+          <!-- Botones de Acción y Control Remoto -->
+          <div style="margin-top: 14px; display: flex; gap: 10px; align-items: center; justify-content: space-between;">
+            <div style="display: flex; gap: 8px;">
+              <button id="btnBleRemotePrev" class="btn" title="Retroceder a foto anterior">⏮️ Anterior</button>
+              <button id="btnBleRemoteNext" class="btn" title="Avanzar a foto siguiente">Siguiente ⏭️</button>
+            </div>
+            <button id="btnBleApplySettings" class="btn btn-accent" style="padding: 9px 16px; display: flex; align-items: center; gap: 6px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+              Enviar Ajustes a ESP32
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="btnBleCancelUpload" class="btn" style="display: none; color: var(--accent-rose); border-color: rgba(244, 63, 94, 0.3);">Cancelar Envío</button>
+        <button id="btnBleDismiss" class="btn">Cerrar</button>
+        <button id="btnBleStartUpload" class="btn btn-accent" style="padding: 10px 18px;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+          Conectar y Transmitir
+        </button>
+        <button id="btnBleStartBatchUpload" class="btn btn-accent" style="display: none; padding: 10px 18px;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+          Subir Lote al ESP32 (0)
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div class="toast" id="toast">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+    <span id="toastMessage">Operación completada con éxito</span>
+  </div>
+
+  <!-- Compiled TypeScript Application -->
+  <script src="dist/app.js"></script>
+</body>
+</html>

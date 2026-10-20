@@ -1,0 +1,40 @@
+{
+  "name": "bitmapper-studio",
+  "version": "1.0.0",
+  "description": "High-performance Desktop Bitmap & Video Frame Generator for Microcontrollers (ESP32, ST7789, ILI9341, SSD1306, and more) - TypeScript Edition",
+  "main": "dist/main.js",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build:main": "esbuild src/main.ts --bundle --platform=node --outfile=dist/main.js --external:electron",
+    "build:preload": "esbuild src/preload.ts --bundle --platform=node --outfile=dist/preload.js --external:electron",
+    "build:renderer": "esbuild src/renderer/app.ts --bundle --platform=browser --outfile=dist/app.js",
+    "build": "npm run typecheck && npm run build:main && npm run build:preload && npm run build:renderer",
+    "prestart": "npm run build",
+    "start": "electron .",
+    "dev": "npm run build && electron ."
+  },
+  "keywords": [
+    "bitmap",
+    "esp32",
+    "st7789",
+    "rgb565",
+    "electron",
+    "typescript",
+    "microcontroller",
+    "embedded",
+    "dithering",
+    "video-converter"
+  ],
+  "author": "Antigravity",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/jszip": "^3.4.1",
+    "@types/node": "^22.10.1",
+    "electron": "^44.7.2",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.7.2"
+  },
+  "dependencies": {
+    "jszip": "^3.10.2"
+  }
+}

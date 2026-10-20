@@ -1,0 +1,51 @@
+# =============================================================================
+# Dependencias de Node.js
+# =============================================================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# =============================================================================
+# Artefactos de Compilación de Firmware y PlatformIO
+# =============================================================================
+.pio/
+firmware/.pio/
+.pioenvs/
+.piolibdeps/
+.clangd/
+compile_commands.json
+
+# Binarios de firmware pesados
+*.elf
+*.bin.gz
+
+# =============================================================================
+# Archivos Temporales y Caché del Sistema Operativo
+# =============================================================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+[Dd]esktop.ini
+$RECYCLE.BIN/
+
+# =============================================================================
+# IDEs y Editores de Código
+# =============================================================================
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+*~
