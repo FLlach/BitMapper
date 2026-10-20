@@ -3388,21 +3388,35 @@ void loop() {
     server = null;
     controlChar = null;
     dataChar = null;
-    isBusy = false;
+    isConnecting = false;
+    isTransferring = false;
+    onDisconnectCallback = null;
     connectedDevName = "BitMapper-ESP32";
     get isConnected() {
       return !!(this.activeDevice && this.server && this.server.connected && this.controlChar);
     }
+    get isBusy() {
+      return this.isConnecting || this.isTransferring;
+    }
     get deviceName() {
       return this.connectedDevName;
+    }
+    onDisconnect(cb) {
+      this.onDisconnectCallback = cb;
     }
     /**
      * Conectar al dispositivo Bluetooth.
      * IMPORTANTE: Debe ser llamado de forma sincrónica con la interacción del usuario (click).
      */
     async requestDeviceAndConnect(onProgress) {
-      if (this.isBusy) {
-        throw new Error("Ya hay una transferencia BLE en progreso.");
+      if (this.activeDevice && this.server && this.server.connected && this.controlChar && this.dataChar) {
+        return { device: this.activeDevice, devName: this.connectedDevName };
+      }
+      if (this.isTransferring) {
+        throw new Error("Hay una transferencia BLE en progreso.");
+      }
+      if (this.isConnecting) {
+        throw new Error("Ya se est\xE1 estableciendo una conexi\xF3n BLE.");
       }
       const bluetooth = navigator.bluetooth;
       if (!bluetooth) {
@@ -3410,59 +3424,71 @@ void loop() {
           "La API Web Bluetooth no est\xE1 soportada en este entorno. Verifica que los permisos Bluetooth est\xE9n activos."
         );
       }
-      if (this.activeDevice && this.server && this.server.connected && this.controlChar && this.dataChar) {
-        return { device: this.activeDevice, devName: this.connectedDevName };
-      }
-      this.isBusy = true;
-      if (onProgress) {
-        onProgress({
-          state: "scanning",
-          statusText: "Buscando m\xF3dulo ESP32-C3 ('BitMapper-ESP32')...",
-          bytesSent: 0,
-          totalBytes: 0,
-          percentage: 0
-        });
-      }
-      let device = null;
+      this.isConnecting = true;
       try {
-        device = await bluetooth.requestDevice({
-          filters: [{ namePrefix: "BitMapper" }],
-          optionalServices: [BLE_SERVICE_UUID]
+        if (onProgress) {
+          onProgress({
+            state: "scanning",
+            statusText: "Buscando m\xF3dulo ESP32-C3 ('BitMapper-ESP32')...",
+            bytesSent: 0,
+            totalBytes: 0,
+            percentage: 0
+          });
+        }
+        let device = null;
+        try {
+          device = await bluetooth.requestDevice({
+            filters: [{ namePrefix: "BitMapper" }],
+            optionalServices: [BLE_SERVICE_UUID]
+          });
+        } catch (scanErr) {
+          console.warn("Filtro por nombre no encontrado, abriendo lista de todos los dispositivos...", scanErr);
+          device = await bluetooth.requestDevice({
+            acceptAllDevices: true,
+            optionalServices: [BLE_SERVICE_UUID]
+          });
+        }
+        this.activeDevice = device;
+        this.connectedDevName = device.name || "BitMapper-ESP32";
+        device.addEventListener("gattserverdisconnected", () => {
+          console.log("[BLE] Dispositivo desconectado del servidor GATT");
+          this.server = null;
+          this.controlChar = null;
+          this.dataChar = null;
+          this.isConnecting = false;
+          this.isTransferring = false;
+          if (this.onDisconnectCallback) {
+            this.onDisconnectCallback();
+          }
         });
-      } catch (scanErr) {
-        console.warn("Filtro por nombre no encontrado, abriendo lista de todos los dispositivos...", scanErr);
-        device = await bluetooth.requestDevice({
-          acceptAllDevices: true,
-          optionalServices: [BLE_SERVICE_UUID]
-        });
+        if (onProgress) {
+          onProgress({
+            state: "connecting",
+            statusText: `Conectando al servidor GATT de ${this.connectedDevName}...`,
+            bytesSent: 0,
+            totalBytes: 0,
+            percentage: 0,
+            deviceName: this.connectedDevName
+          });
+        }
+        this.server = await device.gatt.connect();
+        if (onProgress) {
+          onProgress({
+            state: "connected",
+            statusText: `Conectado a ${this.connectedDevName}. Obteniendo caracter\xEDsticas de transferencia...`,
+            bytesSent: 0,
+            totalBytes: 0,
+            percentage: 0,
+            deviceName: this.connectedDevName
+          });
+        }
+        const service = await this.server.getPrimaryService(BLE_SERVICE_UUID);
+        this.controlChar = await service.getCharacteristic(BLE_CONTROL_CHAR_UUID);
+        this.dataChar = await service.getCharacteristic(BLE_DATA_CHAR_UUID);
+        return { device: this.activeDevice, devName: this.connectedDevName };
+      } finally {
+        this.isConnecting = false;
       }
-      this.activeDevice = device;
-      this.connectedDevName = device.name || "BitMapper-ESP32";
-      if (onProgress) {
-        onProgress({
-          state: "connecting",
-          statusText: `Conectando al servidor GATT de ${this.connectedDevName}...`,
-          bytesSent: 0,
-          totalBytes: 0,
-          percentage: 0,
-          deviceName: this.connectedDevName
-        });
-      }
-      this.server = await device.gatt.connect();
-      if (onProgress) {
-        onProgress({
-          state: "connected",
-          statusText: `Conectado a ${this.connectedDevName}. Obteniendo caracter\xEDsticas de transferencia...`,
-          bytesSent: 0,
-          totalBytes: 0,
-          percentage: 0,
-          deviceName: this.connectedDevName
-        });
-      }
-      const service = await this.server.getPrimaryService(BLE_SERVICE_UUID);
-      this.controlChar = await service.getCharacteristic(BLE_CONTROL_CHAR_UUID);
-      this.dataChar = await service.getCharacteristic(BLE_DATA_CHAR_UUID);
-      return { device: this.activeDevice, devName: this.connectedDevName };
     }
     /**
      * Transmitir los datos al dispositivo ya conectado.
@@ -3472,6 +3498,10 @@ void loop() {
       if (!this.activeDevice || !this.server || !this.controlChar || !this.dataChar) {
         throw new Error("No hay conexi\xF3n activa con el ESP32. Llama a requestDeviceAndConnect() primero.");
       }
+      if (this.isTransferring) {
+        throw new Error("Ya hay una transferencia BLE en progreso.");
+      }
+      this.isTransferring = true;
       const devName = this.connectedDevName;
       try {
         let readyResolver = null;
@@ -3591,7 +3621,7 @@ void loop() {
         });
         throw err;
       } finally {
-        this.isBusy = false;
+        this.isTransferring = false;
       }
     }
     /**
@@ -3794,25 +3824,21 @@ void loop() {
       await this.transferData(options);
     }
     disconnect() {
+      this.isConnecting = false;
+      this.isTransferring = false;
       if (this.activeDevice && this.activeDevice.gatt && this.activeDevice.gatt.connected) {
-        setTimeout(() => {
-          try {
-            this.activeDevice.gatt.disconnect();
-          } catch (err) {
-            console.warn("Error al desconectar GATT:", err);
-          }
-          this.activeDevice = null;
-          this.server = null;
-          this.controlChar = null;
-          this.dataChar = null;
-          this.isBusy = false;
-        }, 500);
-      } else {
-        this.activeDevice = null;
-        this.server = null;
-        this.controlChar = null;
-        this.dataChar = null;
-        this.isBusy = false;
+        try {
+          this.activeDevice.gatt.disconnect();
+        } catch (err) {
+          console.warn("Error al desconectar GATT:", err);
+        }
+      }
+      this.activeDevice = null;
+      this.server = null;
+      this.controlChar = null;
+      this.dataChar = null;
+      if (this.onDisconnectCallback) {
+        this.onDisconnectCallback();
       }
     }
   };
