@@ -1,4 +1,5 @@
 import { ColorFormatId, DitherAlgorithmId } from '../types';
+import { isRetroPalette, findClosestPaletteColor, RETRO_PALETTES } from './retro-palettes';
 
 export const BAYER_4X4: number[][] = [
   [ 0,  8,  2, 10],
@@ -82,6 +83,12 @@ export function applyDithering(
           newR = Math.round(Math.round(curR / 4.0476) * 4.0476);
           newG = Math.round(Math.round(curG / 4.0476) * 4.0476);
           newB = Math.round(Math.round(curB / 4.0476) * 4.0476);
+        } else if (isRetroPalette(mode)) {
+          const pal = RETRO_PALETTES[mode].colors;
+          const { color } = findClosestPaletteColor(curR, curG, curB, pal);
+          newR = color.r;
+          newG = color.g;
+          newB = color.b;
         } else {
           // RGB565 / BGR565
           const r5 = Math.round((curR * 31) / 255);
@@ -182,6 +189,16 @@ export function applyDithering(
         output[idx] = Math.round((clamp(Math.round(rAdj), 0, 63) * 255) / 63);
         output[idx + 1] = Math.round((clamp(Math.round(gAdj), 0, 63) * 255) / 63);
         output[idx + 2] = Math.round((clamp(Math.round(bAdj), 0, 63) * 255) / 63);
+      } else if (isRetroPalette(mode)) {
+        const pal = RETRO_PALETTES[mode].colors;
+        const bayerShift = hasBayer ? ditherOffset * 48 : 0;
+        const rAdj = clamp(r + bayerShift);
+        const gAdj = clamp(g + bayerShift);
+        const bAdj = clamp(b + bayerShift);
+        const { color } = findClosestPaletteColor(rAdj, gAdj, bAdj, pal);
+        output[idx] = color.r;
+        output[idx + 1] = color.g;
+        output[idx + 2] = color.b;
       } else {
         // RGB565 / BGR565
         const rAdj = (r / 255) * 31 + (hasBayer ? ditherOffset : 0);

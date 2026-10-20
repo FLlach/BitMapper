@@ -10,7 +10,14 @@ export type ColorFormatId =
   | 'gray8'
   | 'gray4'
   | 'mono1_horizontal'
-  | 'mono1_vertical';
+  | 'mono1_vertical'
+  | 'palette_gameboy'
+  | 'palette_gb_pocket'
+  | 'palette_cga1'
+  | 'palette_cga2'
+  | 'palette_c64'
+  | 'palette_pico8'
+  | 'palette_zx';
 
 export type DitherAlgorithmId = 'none' | 'floyd' | 'atkinson' | 'bayer4' | 'bayer8';
 
@@ -18,6 +25,7 @@ export type ExportFormatId =
   | 'c_header'
   | 'binary'
   | 'bmpr'
+  | 'rle_compressed'
   | 'hex_dump'
   | 'python'
   | 'png_preview'

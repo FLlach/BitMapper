@@ -1,4 +1,5 @@
 import { EncodeOptions, EncodedBitmap, DataType } from '../types';
+import { isRetroPalette, findClosestPaletteColor, RETRO_PALETTES } from './retro-palettes';
 
 /**
  * Encode an image into raw binary buffer and structured array elements.
@@ -191,6 +192,56 @@ export function encodeBitmap(
         }
         bytes[byteIndex++] = currentByte;
         values.push(currentByte);
+      }
+    }
+  } else if (isRetroPalette(colorFormat)) {
+    dataType = 'uint8_t';
+    const palInfo = RETRO_PALETTES[colorFormat];
+    const totalPixels = width * height;
+
+    if (palInfo.bitDepth === 2) {
+      // 4 pixels per byte (Game Boy DMG / Pocket, CGA)
+      const totalBytes = Math.ceil(totalPixels / 4);
+      bytes = new Uint8Array(totalBytes);
+      let byteIndex = 0;
+
+      for (let i = 0; i < totalPixels; i += 4) {
+        let packed = 0;
+        for (let p = 0; p < 4; p++) {
+          if (i + p < totalPixels) {
+            const idx = (i + p) * 4;
+            const r = rgbaPixels[idx];
+            const g = rgbaPixels[idx + 1];
+            const b = rgbaPixels[idx + 2];
+            const { index } = findClosestPaletteColor(r, g, b, palInfo.colors);
+            const palIdx = invert ? (palInfo.colors.length - 1 - index) : index;
+            packed |= ((palIdx & 0x03) << ((3 - p) * 2));
+          }
+        }
+        bytes[byteIndex++] = packed;
+        values.push(packed);
+      }
+    } else {
+      // 4-bit: 2 pixels per byte (C64, PICO-8, ZX Spectrum)
+      const totalBytes = Math.ceil(totalPixels / 2);
+      bytes = new Uint8Array(totalBytes);
+      let byteIndex = 0;
+
+      for (let i = 0; i < totalPixels; i += 2) {
+        const idx1 = i * 4;
+        const { index: idxA } = findClosestPaletteColor(rgbaPixels[idx1], rgbaPixels[idx1 + 1], rgbaPixels[idx1 + 2], palInfo.colors);
+        const palIdxA = invert ? (palInfo.colors.length - 1 - idxA) : idxA;
+
+        let palIdxB = 0;
+        if (i + 1 < totalPixels) {
+          const idx2 = (i + 1) * 4;
+          const { index: idxB } = findClosestPaletteColor(rgbaPixels[idx2], rgbaPixels[idx2 + 1], rgbaPixels[idx2 + 2], palInfo.colors);
+          palIdxB = invert ? (palInfo.colors.length - 1 - idxB) : idxB;
+        }
+
+        const packed = ((palIdxA & 0x0f) << 4) | (palIdxB & 0x0f);
+        bytes[byteIndex++] = packed;
+        values.push(packed);
       }
     }
   } else {

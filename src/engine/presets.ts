@@ -235,6 +235,62 @@ export const COLOR_FORMATS: ColorFormat[] = [
     dataType: 'uint8_t',
     category: 'Monochrome',
     description: '8 vertical pixels per byte (Page mode). Native memory layout for SSD1306 / SH1106.'
+  },
+  {
+    id: 'palette_gameboy',
+    name: 'Game Boy Classic (4 Verde DMG)',
+    bytesPerPixel: 0.25,
+    dataType: 'uint8_t',
+    category: 'Retro Palettes',
+    description: 'Paleta original de 4 tonos verde oliva de la Game Boy de 1989. Empaqueta 4 píxeles por byte.'
+  },
+  {
+    id: 'palette_gb_pocket',
+    name: 'Game Boy Pocket (4 Grises LCD)',
+    bytesPerPixel: 0.25,
+    dataType: 'uint8_t',
+    category: 'Retro Palettes',
+    description: '4 tonos monocromáticos neutros de la Game Boy Pocket. 4 píxeles por byte.'
+  },
+  {
+    id: 'palette_cga1',
+    name: 'IBM CGA Paleta 1 (Cyan/Magenta)',
+    bytesPerPixel: 0.25,
+    dataType: 'uint8_t',
+    category: 'Retro Palettes',
+    description: 'Negro, Cyan, Magenta y Blanco del adaptador CGA de 1981. 4 píxeles por byte.'
+  },
+  {
+    id: 'palette_cga2',
+    name: 'IBM CGA Paleta 2 (Verde/Rojo/Amarillo)',
+    bytesPerPixel: 0.25,
+    dataType: 'uint8_t',
+    category: 'Retro Palettes',
+    description: 'Negro, Verde, Rojo y Amarillo vibrante CGA. 4 píxeles por byte.'
+  },
+  {
+    id: 'palette_c64',
+    name: 'Commodore 64 (16 Colores VIC-II)',
+    bytesPerPixel: 0.5,
+    dataType: 'uint8_t',
+    category: 'Retro Palettes',
+    description: 'Paleta icónica de 16 colores del Commodore 64. Empaqueta 2 píxeles por byte.'
+  },
+  {
+    id: 'palette_pico8',
+    name: 'PICO-8 Console (16 Colores)',
+    bytesPerPixel: 0.5,
+    dataType: 'uint8_t',
+    category: 'Retro Palettes',
+    description: 'Paleta armónica de 16 colores para pixel art retro moderno. 2 píxeles por byte.'
+  },
+  {
+    id: 'palette_zx',
+    name: 'ZX Spectrum (15 Colores Sinclair)',
+    bytesPerPixel: 0.5,
+    dataType: 'uint8_t',
+    category: 'Retro Palettes',
+    description: '15 colores emblemáticos del Sinclair ZX Spectrum. 2 píxeles por byte.'
   }
 ];
 
@@ -250,6 +306,7 @@ export const EXPORT_FORMATS: ExportFormat[] = [
   { id: 'c_header', name: 'C/C++ Header (.h)', ext: '.h', mime: 'text/x-c' },
   { id: 'binary', name: 'Raw Binary (.bin)', ext: '.bin', mime: 'application/octet-stream' },
   { id: 'bmpr', name: 'BitMapper Binary with Header (.bmpr / .bin)', ext: '.bmpr', mime: 'application/octet-stream' },
+  { id: 'rle_compressed', name: 'Comprimido RLE (.bin.rle / .h)', ext: '.rle', mime: 'application/octet-stream' },
   { id: 'hex_dump', name: 'Hex Dump (.hex)', ext: '.hex', mime: 'text/plain' },
   { id: 'python', name: 'MicroPython (.py)', ext: '.py', mime: 'text/x-python' },
   { id: 'png_preview', name: 'Rendered PNG Preview (.png)', ext: '.png', mime: 'image/png' },
