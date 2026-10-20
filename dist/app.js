@@ -2642,6 +2642,62 @@
       dataType: "uint8_t",
       category: "Monochrome",
       description: "8 vertical pixels per byte (Page mode). Native memory layout for SSD1306 / SH1106."
+    },
+    {
+      id: "palette_gameboy",
+      name: "Game Boy Classic (4 Verde DMG)",
+      bytesPerPixel: 0.25,
+      dataType: "uint8_t",
+      category: "Retro Palettes",
+      description: "Paleta original de 4 tonos verde oliva de la Game Boy de 1989. Empaqueta 4 p\xEDxeles por byte."
+    },
+    {
+      id: "palette_gb_pocket",
+      name: "Game Boy Pocket (4 Grises LCD)",
+      bytesPerPixel: 0.25,
+      dataType: "uint8_t",
+      category: "Retro Palettes",
+      description: "4 tonos monocrom\xE1ticos neutros de la Game Boy Pocket. 4 p\xEDxeles por byte."
+    },
+    {
+      id: "palette_cga1",
+      name: "IBM CGA Paleta 1 (Cyan/Magenta)",
+      bytesPerPixel: 0.25,
+      dataType: "uint8_t",
+      category: "Retro Palettes",
+      description: "Negro, Cyan, Magenta y Blanco del adaptador CGA de 1981. 4 p\xEDxeles por byte."
+    },
+    {
+      id: "palette_cga2",
+      name: "IBM CGA Paleta 2 (Verde/Rojo/Amarillo)",
+      bytesPerPixel: 0.25,
+      dataType: "uint8_t",
+      category: "Retro Palettes",
+      description: "Negro, Verde, Rojo y Amarillo vibrante CGA. 4 p\xEDxeles por byte."
+    },
+    {
+      id: "palette_c64",
+      name: "Commodore 64 (16 Colores VIC-II)",
+      bytesPerPixel: 0.5,
+      dataType: "uint8_t",
+      category: "Retro Palettes",
+      description: "Paleta ic\xF3nica de 16 colores del Commodore 64. Empaqueta 2 p\xEDxeles por byte."
+    },
+    {
+      id: "palette_pico8",
+      name: "PICO-8 Console (16 Colores)",
+      bytesPerPixel: 0.5,
+      dataType: "uint8_t",
+      category: "Retro Palettes",
+      description: "Paleta arm\xF3nica de 16 colores para pixel art retro moderno. 2 p\xEDxeles por byte."
+    },
+    {
+      id: "palette_zx",
+      name: "ZX Spectrum (15 Colores Sinclair)",
+      bytesPerPixel: 0.5,
+      dataType: "uint8_t",
+      category: "Retro Palettes",
+      description: "15 colores emblem\xE1ticos del Sinclair ZX Spectrum. 2 p\xEDxeles por byte."
     }
   ];
   var DITHERING_ALGORITHMS = [
@@ -2655,11 +2711,227 @@
     { id: "c_header", name: "C/C++ Header (.h)", ext: ".h", mime: "text/x-c" },
     { id: "binary", name: "Raw Binary (.bin)", ext: ".bin", mime: "application/octet-stream" },
     { id: "bmpr", name: "BitMapper Binary with Header (.bmpr / .bin)", ext: ".bmpr", mime: "application/octet-stream" },
+    { id: "rle_compressed", name: "Comprimido RLE (.bin.rle / .h)", ext: ".rle", mime: "application/octet-stream" },
     { id: "hex_dump", name: "Hex Dump (.hex)", ext: ".hex", mime: "text/plain" },
     { id: "python", name: "MicroPython (.py)", ext: ".py", mime: "text/x-python" },
     { id: "png_preview", name: "Rendered PNG Preview (.png)", ext: ".png", mime: "image/png" },
     { id: "zip_sequence", name: "ZIP Archive (Frames Sequence)", ext: ".zip", mime: "application/zip" }
   ];
+
+  // src/engine/retro-palettes.ts
+  function hexToRgb(hex) {
+    const clean = hex.replace("#", "");
+    const r = parseInt(clean.substring(0, 2), 16);
+    const g = parseInt(clean.substring(2, 4), 16);
+    const b = parseInt(clean.substring(4, 6), 16);
+    return [r, g, b];
+  }
+  function makeColor(hex) {
+    const [r, g, b] = hexToRgb(hex);
+    const r5 = r >> 3 & 31;
+    const g6 = g >> 2 & 63;
+    const b5 = b >> 3 & 31;
+    const rgb565 = r5 << 11 | g6 << 5 | b5;
+    return { r, g, b, hex, rgb565 };
+  }
+  var RETRO_PALETTES = {
+    palette_gameboy: {
+      id: "palette_gameboy",
+      name: "Game Boy Classic (DMG 4 Green)",
+      category: "Retro Palettes",
+      description: "Classic 4-shade greenish palette of the original 1989 Nintendo Game Boy.",
+      bitDepth: 2,
+      colors: [
+        makeColor("#0f380f"),
+        // darkest
+        makeColor("#306230"),
+        // dark
+        makeColor("#8bac0f"),
+        // light
+        makeColor("#9bbc0f")
+        // lightest
+      ]
+    },
+    palette_gb_pocket: {
+      id: "palette_gb_pocket",
+      name: "Game Boy Pocket (4 Grayscale)",
+      category: "Retro Palettes",
+      description: "Neutral 4-shade true grayscale LCD of Game Boy Pocket.",
+      bitDepth: 2,
+      colors: [
+        makeColor("#141414"),
+        makeColor("#545454"),
+        makeColor("#a0a0a0"),
+        makeColor("#f0f0f0")
+      ]
+    },
+    palette_cga1: {
+      id: "palette_cga1",
+      name: "IBM CGA Palette 1 (High Intensity)",
+      category: "Retro Palettes",
+      description: "Black, Cyan, Magenta, and Bright White from 1981 IBM PC.",
+      bitDepth: 2,
+      colors: [
+        makeColor("#000000"),
+        makeColor("#55ffff"),
+        makeColor("#ff55ff"),
+        makeColor("#ffffff")
+      ]
+    },
+    palette_cga2: {
+      id: "palette_cga2",
+      name: "IBM CGA Palette 2 (High Intensity)",
+      category: "Retro Palettes",
+      description: "Black, Green, Red, and Bright Yellow from 1981 IBM PC.",
+      bitDepth: 2,
+      colors: [
+        makeColor("#000000"),
+        makeColor("#55ff55"),
+        makeColor("#ff5555"),
+        makeColor("#ffff55")
+      ]
+    },
+    palette_c64: {
+      id: "palette_c64",
+      name: "Commodore 64 (16 Colors)",
+      category: "Retro Palettes",
+      description: "Iconic 16-color palette of the legendary Commodore 64 VIC-II.",
+      bitDepth: 4,
+      colors: [
+        makeColor("#000000"),
+        // 0: Black
+        makeColor("#ffffff"),
+        // 1: White
+        makeColor("#880000"),
+        // 2: Red
+        makeColor("#aaffee"),
+        // 3: Cyan
+        makeColor("#cc44cc"),
+        // 4: Purple
+        makeColor("#00cc55"),
+        // 5: Green
+        makeColor("#0000aa"),
+        // 6: Blue
+        makeColor("#eeee77"),
+        // 7: Yellow
+        makeColor("#dd8855"),
+        // 8: Orange
+        makeColor("#664400"),
+        // 9: Brown
+        makeColor("#ff7777"),
+        // 10: Light Red
+        makeColor("#333333"),
+        // 11: Dark Gray
+        makeColor("#777777"),
+        // 12: Gray
+        makeColor("#aaff66"),
+        // 13: Light Green
+        makeColor("#0088ff"),
+        // 14: Light Blue
+        makeColor("#bbbbbb")
+        // 15: Light Gray
+      ]
+    },
+    palette_pico8: {
+      id: "palette_pico8",
+      name: "PICO-8 Fantasy Console (16 Colors)",
+      category: "Retro Palettes",
+      description: "Warm, highly expressive 16-color palette made famous by PICO-8.",
+      bitDepth: 4,
+      colors: [
+        makeColor("#000000"),
+        // Black
+        makeColor("#1d2b53"),
+        // Dark Blue
+        makeColor("#7e2553"),
+        // Dark Purple
+        makeColor("#008751"),
+        // Dark Green
+        makeColor("#ab5236"),
+        // Brown
+        makeColor("#5f574f"),
+        // Dark Gray
+        makeColor("#c2c3c7"),
+        // Light Gray
+        makeColor("#fff1e8"),
+        // White
+        makeColor("#ff004d"),
+        // Red
+        makeColor("#ffa300"),
+        // Orange
+        makeColor("#ffec27"),
+        // Yellow
+        makeColor("#00e436"),
+        // Green
+        makeColor("#29adff"),
+        // Blue
+        makeColor("#83769c"),
+        // Indigo
+        makeColor("#ff77a8"),
+        // Pink
+        makeColor("#ffccaa")
+        // Peach
+      ]
+    },
+    palette_zx: {
+      id: "palette_zx",
+      name: "ZX Spectrum (15 Colors)",
+      category: "Retro Palettes",
+      description: "Sinclair ZX Spectrum 15 distinct hardware colors (normal and bright).",
+      bitDepth: 4,
+      colors: [
+        makeColor("#000000"),
+        // Black
+        makeColor("#0000d7"),
+        // Blue
+        makeColor("#d70000"),
+        // Red
+        makeColor("#d700d7"),
+        // Magenta
+        makeColor("#00d700"),
+        // Green
+        makeColor("#00d7d7"),
+        // Cyan
+        makeColor("#d7d700"),
+        // Yellow
+        makeColor("#d7d7d7"),
+        // White
+        makeColor("#0000ff"),
+        // Bright Blue
+        makeColor("#ff0000"),
+        // Bright Red
+        makeColor("#ff00ff"),
+        // Bright Magenta
+        makeColor("#00ff00"),
+        // Bright Green
+        makeColor("#00ffff"),
+        // Bright Cyan
+        makeColor("#ffff00"),
+        // Bright Yellow
+        makeColor("#ffffff")
+        // Bright White
+      ]
+    }
+  };
+  function isRetroPalette(format) {
+    return format in RETRO_PALETTES;
+  }
+  function findClosestPaletteColor(r, g, b, palette) {
+    let minDistance = Infinity;
+    let bestIndex = 0;
+    for (let i = 0; i < palette.length; i++) {
+      const c = palette[i];
+      const dr = r - c.r;
+      const dg = g - c.g;
+      const db = b - c.b;
+      const dist = 2 * dr * dr + 4 * dg * dg + 3 * db * db;
+      if (dist < minDistance) {
+        minDistance = dist;
+        bestIndex = i;
+      }
+    }
+    return { index: bestIndex, color: palette[bestIndex] };
+  }
 
   // src/engine/dither.ts
   var BAYER_4X4 = [
@@ -2721,6 +2993,12 @@
             newR = Math.round(Math.round(curR / 4.0476) * 4.0476);
             newG = Math.round(Math.round(curG / 4.0476) * 4.0476);
             newB = Math.round(Math.round(curB / 4.0476) * 4.0476);
+          } else if (isRetroPalette(mode)) {
+            const pal = RETRO_PALETTES[mode].colors;
+            const { color } = findClosestPaletteColor(curR, curG, curB, pal);
+            newR = color.r;
+            newG = color.g;
+            newB = color.b;
           } else {
             const r5 = Math.round(curR * 31 / 255);
             const g6 = Math.round(curG * 63 / 255);
@@ -2809,6 +3087,16 @@
           output[idx] = Math.round(clamp(Math.round(rAdj), 0, 63) * 255 / 63);
           output[idx + 1] = Math.round(clamp(Math.round(gAdj), 0, 63) * 255 / 63);
           output[idx + 2] = Math.round(clamp(Math.round(bAdj), 0, 63) * 255 / 63);
+        } else if (isRetroPalette(mode)) {
+          const pal = RETRO_PALETTES[mode].colors;
+          const bayerShift = hasBayer ? ditherOffset * 48 : 0;
+          const rAdj = clamp(r + bayerShift);
+          const gAdj = clamp(g + bayerShift);
+          const bAdj = clamp(b + bayerShift);
+          const { color } = findClosestPaletteColor(rAdj, gAdj, bAdj, pal);
+          output[idx] = color.r;
+          output[idx + 1] = color.g;
+          output[idx + 2] = color.b;
         } else {
           const rAdj = r / 255 * 31 + (hasBayer ? ditherOffset : 0);
           const gAdj = g / 255 * 63 + (hasBayer ? ditherOffset : 0);
@@ -2976,6 +3264,49 @@
           }
           bytes[byteIndex++] = currentByte;
           values.push(currentByte);
+        }
+      }
+    } else if (isRetroPalette(colorFormat)) {
+      dataType = "uint8_t";
+      const palInfo = RETRO_PALETTES[colorFormat];
+      const totalPixels = width * height;
+      if (palInfo.bitDepth === 2) {
+        const totalBytes = Math.ceil(totalPixels / 4);
+        bytes = new Uint8Array(totalBytes);
+        let byteIndex = 0;
+        for (let i = 0; i < totalPixels; i += 4) {
+          let packed = 0;
+          for (let p = 0; p < 4; p++) {
+            if (i + p < totalPixels) {
+              const idx = (i + p) * 4;
+              const r = rgbaPixels[idx];
+              const g = rgbaPixels[idx + 1];
+              const b = rgbaPixels[idx + 2];
+              const { index } = findClosestPaletteColor(r, g, b, palInfo.colors);
+              const palIdx = invert ? palInfo.colors.length - 1 - index : index;
+              packed |= (palIdx & 3) << (3 - p) * 2;
+            }
+          }
+          bytes[byteIndex++] = packed;
+          values.push(packed);
+        }
+      } else {
+        const totalBytes = Math.ceil(totalPixels / 2);
+        bytes = new Uint8Array(totalBytes);
+        let byteIndex = 0;
+        for (let i = 0; i < totalPixels; i += 2) {
+          const idx1 = i * 4;
+          const { index: idxA } = findClosestPaletteColor(rgbaPixels[idx1], rgbaPixels[idx1 + 1], rgbaPixels[idx1 + 2], palInfo.colors);
+          const palIdxA = invert ? palInfo.colors.length - 1 - idxA : idxA;
+          let palIdxB = 0;
+          if (i + 1 < totalPixels) {
+            const idx2 = (i + 1) * 4;
+            const { index: idxB } = findClosestPaletteColor(rgbaPixels[idx2], rgbaPixels[idx2 + 1], rgbaPixels[idx2 + 2], palInfo.colors);
+            palIdxB = invert ? palInfo.colors.length - 1 - idxB : idxB;
+          }
+          const packed = (palIdxA & 15) << 4 | palIdxB & 15;
+          bytes[byteIndex++] = packed;
+          values.push(packed);
         }
       }
     } else {
@@ -3861,6 +4192,779 @@ void loop() {
   };
   var bleUploader = new BLEUploader();
 
+  // src/engine/rle-compressor.ts
+  function compressRLE(data) {
+    const originalSize = data.length;
+    if (originalSize === 0) {
+      return {
+        compressed: new Uint8Array(0),
+        originalSize: 0,
+        compressedSize: 0,
+        ratioPercent: 0
+      };
+    }
+    const out = [];
+    let i = 0;
+    while (i < originalSize) {
+      let runLen = 1;
+      while (i + runLen < originalSize && runLen < 128 && data[i + runLen] === data[i]) {
+        runLen++;
+      }
+      if (runLen >= 3) {
+        out.push(128 | runLen - 1);
+        out.push(data[i]);
+        i += runLen;
+      } else {
+        let litLen = 0;
+        while (i + litLen < originalSize && litLen < 128) {
+          if (i + litLen + 2 < originalSize && data[i + litLen] === data[i + litLen + 1] && data[i + litLen] === data[i + litLen + 2]) {
+            break;
+          }
+          litLen++;
+        }
+        if (litLen === 0) {
+          litLen = 1;
+        }
+        out.push(litLen - 1);
+        for (let k = 0; k < litLen; k++) {
+          out.push(data[i + k]);
+        }
+        i += litLen;
+      }
+    }
+    const compressed = new Uint8Array(out);
+    const compressedSize = compressed.length;
+    const ratioPercent = Math.round((compressedSize - originalSize) / originalSize * 100);
+    return {
+      compressed,
+      originalSize,
+      compressedSize,
+      ratioPercent
+    };
+  }
+  function generateRLECHeader(name, width, height, rawBytes, options = {}) {
+    const { colorFormat = "rgb565", useProgmem = true } = options;
+    const { compressed, originalSize, compressedSize, ratioPercent } = compressRLE(rawBytes);
+    const safeName = name.replace(/[^a-zA-Z0-9_]/g, "_").toLowerCase();
+    const upperName = safeName.toUpperCase();
+    const progmemStr = useProgmem ? "PROGMEM " : "";
+    const chunks = [];
+    chunks.push(`// =============================================================================
+`);
+    chunks.push(`// BitMapper Studio - PackBits RLE Compressed Bitmap
+`);
+    chunks.push(`// Original Size   : ${originalSize} bytes (${width} x ${height} px)
+`);
+    chunks.push(`// Compressed Size : ${compressedSize} bytes (${ratioPercent < 0 ? ratioPercent : "+" + ratioPercent}%)
+`);
+    chunks.push(`// Color Format     : ${colorFormat.toUpperCase()}
+`);
+    chunks.push(`// Date             : ${(/* @__PURE__ */ new Date()).toISOString()}
+`);
+    chunks.push(`// =============================================================================
+
+`);
+    chunks.push(`#pragma once
+`);
+    chunks.push(`#include <Arduino.h>
+
+`);
+    chunks.push(`#define ${upperName}_WIDTH ${width}
+`);
+    chunks.push(`#define ${upperName}_HEIGHT ${height}
+`);
+    chunks.push(`#define ${upperName}_RAW_SIZE ${originalSize}
+`);
+    chunks.push(`#define ${upperName}_RLE_SIZE ${compressedSize}
+
+`);
+    chunks.push(`// RLE Compressed Stream Data
+`);
+    chunks.push(`const uint8_t ${safeName}_rle_data[${compressedSize}] ${progmemStr}= {
+`);
+    let currentLine = "  ";
+    for (let i = 0; i < compressedSize; i++) {
+      currentLine += toHex(compressed[i], "uint8_t");
+      if (i < compressedSize - 1) currentLine += ", ";
+      if ((i + 1) % 16 === 0 || i === compressedSize - 1) {
+        chunks.push(currentLine + "\n");
+        currentLine = "  ";
+      }
+    }
+    chunks.push(`};
+
+`);
+    chunks.push(`/**
+`);
+    chunks.push(` * Stream and draw RLE compressed RGB565 bitmap directly to TFT display
+`);
+    chunks.push(` * Requires ZERO RAM allocation!
+`);
+    chunks.push(` */
+`);
+    chunks.push(`#if defined(TFT_ESPI_VERSION) || defined(_TFT_eSPIH_)
+`);
+    chunks.push(`inline void draw_${safeName}_RLE(TFT_eSPI &tft, int16_t x, int16_t y) {
+`);
+    chunks.push(`  tft.setAddrWindow(x, y, ${upperName}_WIDTH, ${upperName}_HEIGHT);
+`);
+    chunks.push(`  tft.startWrite();
+`);
+    chunks.push(`  size_t si = 0;
+`);
+    chunks.push(`  uint8_t byteLo = 0, byteHi = 0;
+`);
+    chunks.push(`  bool hasHi = false;
+`);
+    chunks.push(`  while (si < ${upperName}_RLE_SIZE) {
+`);
+    chunks.push(`    uint8_t header = pgm_read_byte(&${safeName}_rle_data[si++]);
+`);
+    chunks.push(`    if (header & 0x80) {
+`);
+    chunks.push(`      uint8_t count = (header & 0x7F) + 1;
+`);
+    chunks.push(`      uint8_t val = pgm_read_byte(&${safeName}_rle_data[si++]);
+`);
+    chunks.push(`      for (uint8_t k = 0; k < count; k++) {
+`);
+    chunks.push(`        if (!hasHi) { byteHi = val; hasHi = true; }
+`);
+    chunks.push(`        else { tft.pushColor((byteHi << 8) | val); hasHi = false; }
+`);
+    chunks.push(`      }
+`);
+    chunks.push(`    } else {
+`);
+    chunks.push(`      uint8_t count = header + 1;
+`);
+    chunks.push(`      for (uint8_t k = 0; k < count; k++) {
+`);
+    chunks.push(`        uint8_t val = pgm_read_byte(&${safeName}_rle_data[si++]);
+`);
+    chunks.push(`        if (!hasHi) { byteHi = val; hasHi = true; }
+`);
+    chunks.push(`        else { tft.pushColor((byteHi << 8) | val); hasHi = false; }
+`);
+    chunks.push(`      }
+`);
+    chunks.push(`    }
+`);
+    chunks.push(`  }
+`);
+    chunks.push(`  tft.endWrite();
+`);
+    chunks.push(`}
+`);
+    chunks.push(`#endif
+`);
+    return chunks.join("");
+  }
+
+  // src/engine/gif-decoder.ts
+  async function isGifFile(fileOrBlob) {
+    if (fileOrBlob.type === "image/gif") return true;
+    try {
+      const slice = fileOrBlob.slice(0, 6);
+      const buf = await slice.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      const header = String.fromCharCode(...bytes);
+      return header === "GIF87a" || header === "GIF89a";
+    } catch {
+      return false;
+    }
+  }
+  async function decodeGifAnimation(fileOrBlob) {
+    const isGif = await isGifFile(fileOrBlob);
+    if (!isGif) {
+      throw new Error("El archivo seleccionado no es un formato GIF v\xE1lido.");
+    }
+    if (typeof window.ImageDecoder !== "undefined") {
+      const ImageDecoderClass = window.ImageDecoder;
+      const decoder = new ImageDecoderClass({
+        data: fileOrBlob.stream(),
+        type: "image/gif"
+      });
+      await decoder.tracks.ready;
+      const track = decoder.tracks.selectedTrack;
+      const frameCount = track ? track.frameCount : 1;
+      const frames = [];
+      let totalDurationMs = 0;
+      let width = 0;
+      let height = 0;
+      for (let i = 0; i < frameCount; i++) {
+        const decodedFrame = await decoder.decode({ frameIndex: i });
+        const img = decodedFrame.image;
+        width = img.displayWidth || img.codedWidth || width;
+        height = img.displayHeight || img.codedHeight || height;
+        const durationMs = Math.max(20, Math.round((img.duration || 1e5) / 1e3));
+        totalDurationMs += durationMs;
+        const offscreen = new OffscreenCanvas(width, height);
+        const ctx = offscreen.getContext("2d");
+        ctx.drawImage(img, 0, 0);
+        const bitmap = offscreen.transferToImageBitmap();
+        frames.push({
+          index: i,
+          bitmap,
+          durationMs,
+          width,
+          height
+        });
+        img.close();
+      }
+      const avgFps = frames.length > 0 && totalDurationMs > 0 ? Math.max(1, Math.round(frames.length / (totalDurationMs / 1e3))) : 10;
+      return {
+        isAnimated: frames.length > 1,
+        frameCount: frames.length,
+        width,
+        height,
+        totalDurationMs,
+        averageFps: avgFps,
+        frames
+      };
+    }
+    const imgUrl = URL.createObjectURL(fileOrBlob);
+    try {
+      const img = new Image();
+      await new Promise((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error("Error al cargar imagen GIF"));
+        img.src = imgUrl;
+      });
+      const offscreen = new OffscreenCanvas(img.naturalWidth, img.naturalHeight);
+      const ctx = offscreen.getContext("2d");
+      ctx.drawImage(img, 0, 0);
+      const bitmap = offscreen.transferToImageBitmap();
+      return {
+        isAnimated: false,
+        frameCount: 1,
+        width: img.naturalWidth,
+        height: img.naturalHeight,
+        totalDurationMs: 100,
+        averageFps: 10,
+        frames: [{
+          index: 0,
+          bitmap,
+          durationMs: 100,
+          width: img.naturalWidth,
+          height: img.naturalHeight
+        }]
+      };
+    } finally {
+      URL.revokeObjectURL(imgUrl);
+    }
+  }
+
+  // src/engine/pixel-editor.ts
+  var RETRO_FONT_5X7 = {
+    32: [0, 0, 0, 0, 0],
+    // Space
+    33: [0, 0, 95, 0, 0],
+    // !
+    34: [0, 7, 0, 7, 0],
+    // "
+    35: [20, 127, 20, 127, 20],
+    // #
+    36: [36, 42, 127, 42, 18],
+    // $
+    37: [35, 19, 8, 100, 98],
+    // %
+    38: [54, 73, 85, 34, 80],
+    // &
+    39: [0, 5, 3, 0, 0],
+    // '
+    40: [0, 28, 34, 65, 0],
+    // (
+    41: [0, 65, 34, 28, 0],
+    // )
+    42: [20, 8, 62, 8, 20],
+    // *
+    43: [8, 8, 62, 8, 8],
+    // +
+    44: [0, 80, 48, 0, 0],
+    // ,
+    45: [8, 8, 8, 8, 8],
+    // -
+    46: [0, 96, 96, 0, 0],
+    // .
+    47: [32, 16, 8, 4, 2],
+    // /
+    48: [62, 81, 73, 69, 62],
+    // 0
+    49: [0, 66, 127, 64, 0],
+    // 1
+    50: [66, 97, 81, 73, 70],
+    // 2
+    51: [33, 65, 69, 75, 49],
+    // 3
+    52: [24, 20, 18, 127, 16],
+    // 4
+    53: [39, 69, 69, 69, 57],
+    // 5
+    54: [60, 74, 73, 73, 48],
+    // 6
+    55: [1, 113, 9, 5, 3],
+    // 7
+    56: [54, 73, 73, 73, 54],
+    // 8
+    57: [6, 73, 73, 41, 30],
+    // 9
+    58: [0, 54, 54, 0, 0],
+    // :
+    59: [0, 86, 54, 0, 0],
+    // ;
+    60: [8, 20, 34, 65, 0],
+    // <
+    61: [20, 20, 20, 20, 20],
+    // =
+    62: [0, 65, 34, 20, 8],
+    // >
+    63: [2, 1, 81, 9, 6],
+    // ?
+    64: [50, 73, 121, 65, 62],
+    // @
+    65: [126, 17, 17, 17, 126],
+    // A
+    66: [127, 73, 73, 73, 54],
+    // B
+    67: [62, 65, 65, 65, 34],
+    // C
+    68: [127, 65, 65, 34, 28],
+    // D
+    69: [127, 73, 73, 73, 65],
+    // E
+    70: [127, 9, 9, 9, 1],
+    // F
+    71: [62, 65, 73, 73, 122],
+    // G
+    72: [127, 8, 8, 8, 127],
+    // H
+    73: [0, 65, 127, 65, 0],
+    // I
+    74: [32, 64, 65, 63, 1],
+    // J
+    75: [127, 8, 20, 34, 65],
+    // K
+    76: [127, 64, 64, 64, 64],
+    // L
+    77: [127, 2, 12, 2, 127],
+    // M
+    78: [127, 4, 8, 16, 127],
+    // N
+    79: [62, 65, 65, 65, 62],
+    // O
+    80: [127, 9, 9, 9, 6],
+    // P
+    81: [62, 65, 81, 33, 94],
+    // Q
+    82: [127, 9, 25, 41, 70],
+    // R
+    83: [70, 73, 73, 73, 49],
+    // S
+    84: [1, 1, 127, 1, 1],
+    // T
+    85: [63, 64, 64, 64, 63],
+    // U
+    86: [31, 32, 64, 32, 31],
+    // V
+    87: [127, 32, 24, 32, 127],
+    // W
+    88: [99, 20, 8, 20, 99],
+    // X
+    89: [7, 8, 112, 8, 7],
+    // Y
+    90: [97, 81, 73, 69, 67],
+    // Z
+    97: [32, 84, 84, 84, 120],
+    // a
+    98: [127, 72, 68, 68, 56],
+    // b
+    99: [56, 68, 68, 68, 32],
+    // c
+    100: [56, 68, 68, 72, 127],
+    // d
+    101: [56, 84, 84, 84, 24],
+    // e
+    102: [8, 126, 9, 1, 2],
+    // f
+    103: [8, 20, 84, 84, 60],
+    // g
+    104: [127, 8, 4, 4, 120],
+    // h
+    105: [0, 68, 125, 64, 0],
+    // i
+    106: [32, 64, 68, 61, 0],
+    // j
+    107: [127, 16, 40, 68, 0],
+    // k
+    108: [0, 65, 127, 64, 0],
+    // l
+    109: [124, 4, 24, 4, 120],
+    // m
+    110: [124, 8, 4, 4, 120],
+    // n
+    111: [56, 68, 68, 68, 56],
+    // o
+    112: [124, 20, 20, 20, 8],
+    // p
+    113: [8, 20, 20, 24, 124],
+    // q
+    114: [124, 8, 4, 4, 8],
+    // r
+    115: [72, 84, 84, 84, 32],
+    // s
+    116: [4, 63, 68, 64, 32],
+    // t
+    117: [60, 64, 64, 32, 124],
+    // u
+    118: [28, 32, 64, 32, 28],
+    // v
+    119: [60, 64, 48, 64, 60],
+    // w
+    120: [68, 40, 16, 40, 68],
+    // x
+    121: [12, 80, 80, 80, 60],
+    // y
+    122: [68, 100, 84, 76, 68]
+    // z
+  };
+  var PixelEditor = class {
+    edits = /* @__PURE__ */ new Map();
+    history = [];
+    historyIndex = -1;
+    activeTool = "pointer";
+    currentColor = [255, 255, 255, 255];
+    // default white
+    setTool(tool) {
+      this.activeTool = tool;
+    }
+    setColor(r, g, b, a = 255) {
+      this.currentColor = [r, g, b, a];
+    }
+    setPixel(x, y, width, height, color) {
+      if (x < 0 || x >= width || y < 0 || y >= height) return;
+      const key = y * width + x;
+      this.saveSnapshot();
+      this.edits.set(key, color || [...this.currentColor]);
+    }
+    erasePixel(x, y, width, height) {
+      if (x < 0 || x >= width || y < 0 || y >= height) return;
+      const key = y * width + x;
+      if (this.edits.has(key)) {
+        this.saveSnapshot();
+        this.edits.delete(key);
+      }
+    }
+    stampText(text, startX, startY, width, height, color) {
+      this.saveSnapshot();
+      const col = color || [...this.currentColor];
+      let cursorX = startX;
+      for (let c = 0; c < text.length; c++) {
+        const charCode = text.charCodeAt(c);
+        const glyph = RETRO_FONT_5X7[charCode] || RETRO_FONT_5X7[63];
+        for (let colIdx = 0; colIdx < 5; colIdx++) {
+          const line = glyph[colIdx];
+          const px = cursorX + colIdx;
+          if (px >= width) break;
+          for (let row = 0; row < 7; row++) {
+            const py = startY + row;
+            if (py >= height) break;
+            if ((line & 1 << row) !== 0) {
+              const key = py * width + px;
+              this.edits.set(key, [...col]);
+            }
+          }
+        }
+        cursorX += 6;
+        if (cursorX >= width) break;
+      }
+    }
+    clear() {
+      if (this.edits.size > 0) {
+        this.saveSnapshot();
+        this.edits.clear();
+      }
+    }
+    getEditCount() {
+      return this.edits.size;
+    }
+    applyToImageData(imageData, width, height) {
+      if (this.edits.size === 0) return;
+      const data = imageData.data;
+      for (const [key, color] of this.edits.entries()) {
+        const pixelIdx = key * 4;
+        if (pixelIdx + 3 < data.length) {
+          data[pixelIdx] = color[0];
+          data[pixelIdx + 1] = color[1];
+          data[pixelIdx + 2] = color[2];
+          data[pixelIdx + 3] = color[3];
+        }
+      }
+    }
+    saveSnapshot() {
+      if (this.historyIndex < this.history.length - 1) {
+        this.history = this.history.slice(0, this.historyIndex + 1);
+      }
+      this.history.push(new Map(this.edits));
+      if (this.history.length > 25) {
+        this.history.shift();
+      } else {
+        this.historyIndex++;
+      }
+    }
+    undo() {
+      if (this.historyIndex > 0) {
+        this.historyIndex--;
+        this.edits = new Map(this.history[this.historyIndex]);
+        return true;
+      }
+      return false;
+    }
+  };
+  var pixelEditor = new PixelEditor();
+
+  // src/engine/font-generator.ts
+  function generateBitmapFont(options) {
+    const {
+      fontFamily,
+      fontSize,
+      fontWeight = "normal",
+      firstChar = 32,
+      lastChar = 126,
+      fontName = `${fontFamily.replace(/[^a-zA-Z0-9]/g, "_")}_${fontSize}pt`
+    } = options;
+    const canvas = document.createElement("canvas");
+    const maxDim = Math.max(64, fontSize * 3);
+    canvas.width = maxDim;
+    canvas.height = maxDim;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    const fontSpec = `${fontWeight} ${fontSize}px "${fontFamily}", monospace, sans-serif`;
+    ctx.font = fontSpec;
+    ctx.textBaseline = "alphabetic";
+    const bitmapBytes = [];
+    const glyphs = [];
+    let bitBuffer = 0;
+    let bitCount = 0;
+    function pushBit(b) {
+      bitBuffer = bitBuffer << 1 | (b ? 1 : 0);
+      bitCount++;
+      if (bitCount === 8) {
+        bitmapBytes.push(bitBuffer);
+        bitBuffer = 0;
+        bitCount = 0;
+      }
+    }
+    function flushBits() {
+      if (bitCount > 0) {
+        bitBuffer <<= 8 - bitCount;
+        bitmapBytes.push(bitBuffer);
+        bitBuffer = 0;
+        bitCount = 0;
+      }
+    }
+    const baselineY = Math.round(fontSize * 1.5);
+    const baselineX = 10;
+    const yAdvance = Math.round(fontSize * 1.25);
+    for (let ch = firstChar; ch <= lastChar; ch++) {
+      const charStr = String.fromCharCode(ch);
+      ctx.clearRect(0, 0, maxDim, maxDim);
+      ctx.fillStyle = "#ffffff";
+      ctx.font = fontSpec;
+      ctx.fillText(charStr, baselineX, baselineY);
+      const metrics = ctx.measureText(charStr);
+      const xAdv = Math.max(1, Math.round(metrics.width));
+      const imgData = ctx.getImageData(0, 0, maxDim, maxDim);
+      const data = imgData.data;
+      let minX = maxDim, maxX = -1, minY = maxDim, maxY = -1;
+      for (let y = 0; y < maxDim; y++) {
+        for (let x = 0; x < maxDim; x++) {
+          const alpha = data[(y * maxDim + x) * 4 + 3];
+          if (alpha > 80) {
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+          }
+        }
+      }
+      let glyphW = 0;
+      let glyphH = 0;
+      let xOff = 0;
+      let yOff = 0;
+      const currentOffset = bitmapBytes.length;
+      if (maxX >= minX && maxY >= minY) {
+        glyphW = maxX - minX + 1;
+        glyphH = maxY - minY + 1;
+        xOff = minX - baselineX;
+        yOff = minY - baselineY;
+        for (let y = minY; y <= maxY; y++) {
+          for (let x = minX; x <= maxX; x++) {
+            const alpha = data[(y * maxDim + x) * 4 + 3];
+            pushBit(alpha > 80 ? 1 : 0);
+          }
+        }
+        flushBits();
+      } else {
+        glyphW = 0;
+        glyphH = 0;
+        xOff = 0;
+        yOff = 0;
+      }
+      let previewUrl;
+      if (glyphW > 0 && glyphH > 0) {
+        const pCanvas = document.createElement("canvas");
+        pCanvas.width = glyphW;
+        pCanvas.height = glyphH;
+        const pCtx = pCanvas.getContext("2d");
+        pCtx.putImageData(ctx.getImageData(minX, minY, glyphW, glyphH), 0, 0);
+        previewUrl = pCanvas.toDataURL();
+      }
+      glyphs.push({
+        char: charStr,
+        ascii: ch,
+        bitmapOffset: currentOffset,
+        width: glyphW,
+        height: glyphH,
+        xAdvance: xAdv,
+        xOffset: xOff,
+        yOffset: yOff,
+        previewDataUrl: previewUrl
+      });
+    }
+    const safeFontName = fontName.replace(/[^a-zA-Z0-9_]/g, "_");
+    const chunks = [];
+    chunks.push(`// =============================================================================
+`);
+    chunks.push(`// BitMapper Studio - Custom Bitmap Font Generator
+`);
+    chunks.push(`// Font Family    : ${fontFamily} (${fontSize}px, ${fontWeight})
+`);
+    chunks.push(`// Character Range: ASCII ${firstChar} to ${lastChar} ('${String.fromCharCode(firstChar)}' - '${String.fromCharCode(lastChar)}')
+`);
+    chunks.push(`// Total Bitmaps   : ${bitmapBytes.length} bytes
+`);
+    chunks.push(`// Date           : ${(/* @__PURE__ */ new Date()).toISOString()}
+`);
+    chunks.push(`// =============================================================================
+
+`);
+    chunks.push(`#pragma once
+`);
+    chunks.push(`#include <Adafruit_GFX.h>
+
+`);
+    chunks.push(`// Bitmaps for glyphs (1-bit packed horizontally MSB first)
+`);
+    chunks.push(`const uint8_t ${safeFontName}Bitmaps[${bitmapBytes.length}] PROGMEM = {
+`);
+    let line = "  ";
+    for (let i = 0; i < bitmapBytes.length; i++) {
+      line += "0x" + bitmapBytes[i].toString(16).toUpperCase().padStart(2, "0");
+      if (i < bitmapBytes.length - 1) line += ", ";
+      if ((i + 1) % 16 === 0 || i === bitmapBytes.length - 1) {
+        chunks.push(line + "\n");
+        line = "  ";
+      }
+    }
+    chunks.push(`};
+
+`);
+    chunks.push(`// Glyph metadata: offset, width, height, xAdvance, xOffset, yOffset
+`);
+    chunks.push(`const GFXglyph ${safeFontName}Glyphs[] PROGMEM = {
+`);
+    glyphs.forEach((g, idx) => {
+      const comment = g.char === "\\" ? "'\\\\'" : `'${g.char}'`;
+      chunks.push(`  { ${g.bitmapOffset.toString().padStart(4, " ")}, ${g.width.toString().padStart(2, " ")}, ${g.height.toString().padStart(2, " ")}, ${g.xAdvance.toString().padStart(2, " ")}, ${g.xOffset.toString().padStart(3, " ")}, ${g.yOffset.toString().padStart(3, " ")} }${idx < glyphs.length - 1 ? "," : ""} // ${comment} (${g.ascii})
+`);
+    });
+    chunks.push(`};
+
+`);
+    chunks.push(`// GFXfont struct for Adafruit_GFX and TFT_eSPI (use tft.setFreeFont(&${safeFontName}))
+`);
+    chunks.push(`const GFXfont ${safeFontName} PROGMEM = {
+`);
+    chunks.push(`  (uint8_t *)${safeFontName}Bitmaps,
+`);
+    chunks.push(`  (GFXglyph *)${safeFontName}Glyphs,
+`);
+    chunks.push(`  ${firstChar},
+`);
+    chunks.push(`  ${lastChar},
+`);
+    chunks.push(`  ${yAdvance}
+`);
+    chunks.push(`};
+`);
+    return {
+      fontName: safeFontName,
+      firstChar,
+      lastChar,
+      yAdvance,
+      totalBitmapsSize: bitmapBytes.length,
+      headerContent: chunks.join(""),
+      glyphs
+    };
+  }
+
+  // src/engine/preview-recorder.ts
+  async function copyCanvasToClipboard(canvas) {
+    return new Promise((resolve) => {
+      canvas.toBlob(async (blob) => {
+        if (!blob) {
+          resolve(false);
+          return;
+        }
+        try {
+          await navigator.clipboard.write([
+            new ClipboardItem({ "image/png": blob })
+          ]);
+          resolve(true);
+        } catch (err) {
+          console.error("Error al copiar al portapapeles:", err);
+          resolve(false);
+        }
+      }, "image/png");
+    });
+  }
+  async function recordCanvasAnimation(canvas, renderFrame, totalFrames, fps = 15, onProgress) {
+    if (totalFrames <= 0) {
+      throw new Error("No hay fotogramas para grabar.");
+    }
+    const stream = canvas.captureStream(0);
+    const track = stream.getVideoTracks()[0];
+    const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9") ? "video/webm;codecs=vp9" : "video/webm";
+    const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 5e6 });
+    const recordedChunks = [];
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) {
+        recordedChunks.push(e.data);
+      }
+    };
+    const recordingPromise = new Promise((resolve, reject) => {
+      recorder.onstop = () => {
+        const fullBlob = new Blob(recordedChunks, { type: "video/webm" });
+        resolve(fullBlob);
+      };
+      recorder.onerror = (e) => reject(e);
+    });
+    recorder.start();
+    const delayMs = Math.round(1e3 / Math.max(1, fps));
+    for (let i = 0; i < totalFrames; i++) {
+      await renderFrame(i);
+      if (track.requestFrame) {
+        track.requestFrame();
+      }
+      if (onProgress) {
+        onProgress(Math.round((i + 1) / totalFrames * 100));
+      }
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+    recorder.stop();
+    return recordingPromise;
+  }
+
   // src/renderer/app.ts
   var state = {
     sourceType: "image",
@@ -4044,7 +5148,35 @@ void loop() {
     btnBleApplySettings: document.getElementById("btnBleApplySettings"),
     btnBleRemotePrev: document.getElementById("btnBleRemotePrev"),
     btnBleRemoteNext: document.getElementById("btnBleRemoteNext"),
-    bleOptBmprHeader: document.getElementById("bleOptBmprHeader")
+    bleOptBmprHeader: document.getElementById("bleOptBmprHeader"),
+    // Utilities & Pixel Art & Font Gen
+    btnHeaderFontGen: document.getElementById("btnHeaderFontGen"),
+    btnHeaderCopyClipboard: document.getElementById("btnHeaderCopyClipboard"),
+    btnHeaderRecordAnim: document.getElementById("btnHeaderRecordAnim"),
+    pixelArtToolbar: document.getElementById("pixelArtToolbar"),
+    toolPointer: document.getElementById("toolPointer"),
+    toolPencil: document.getElementById("toolPencil"),
+    toolEraser: document.getElementById("toolEraser"),
+    toolText: document.getElementById("toolText"),
+    pixelColorCustom: document.getElementById("pixelColorCustom"),
+    pixelTextInput: document.getElementById("pixelTextInput"),
+    pixelTextControlGroup: document.getElementById("pixelTextControlGroup"),
+    btnPixelUndo: document.getElementById("btnPixelUndo"),
+    btnPixelClear: document.getElementById("btnPixelClear"),
+    pixelEditBadge: document.getElementById("pixelEditBadge"),
+    fontModalOverlay: document.getElementById("fontModalOverlay"),
+    btnCloseFontModal: document.getElementById("btnCloseFontModal"),
+    btnDismissFontModal: document.getElementById("btnDismissFontModal"),
+    btnCopyFontHeader: document.getElementById("btnCopyFontHeader"),
+    btnDownloadFontHeader: document.getElementById("btnDownloadFontHeader"),
+    fontFamilySelect: document.getElementById("fontFamilySelect"),
+    fontSizeSelect: document.getElementById("fontSizeSelect"),
+    fontWeightSelect: document.getElementById("fontWeightSelect"),
+    fontRangeSelect: document.getElementById("fontRangeSelect"),
+    fontGlyphGrid: document.getElementById("fontGlyphGrid"),
+    fontTotalBytesLabel: document.getElementById("fontTotalBytesLabel"),
+    fontTestInput: document.getElementById("fontTestInput"),
+    fontTestCanvas: document.getElementById("fontTestCanvas")
   };
   var workCanvas = document.createElement("canvas");
   var workCtx = workCanvas.getContext("2d", { willReadFrequently: true });
@@ -4294,9 +5426,18 @@ void loop() {
       }
     });
     el.videoScrubber.addEventListener("input", () => {
-      if (state.sourceType === "video" && el.hiddenVideo.duration) {
-        const time = parseFloat(el.videoScrubber.value) / 100 * el.hiddenVideo.duration;
-        el.hiddenVideo.currentTime = time;
+      if (state.sourceType === "video") {
+        if (currentGifAnimation) {
+          const pct = parseFloat(el.videoScrubber.value) / 100;
+          const idx = Math.min(
+            currentGifAnimation.frames.length - 1,
+            Math.floor(pct * currentGifAnimation.frames.length)
+          );
+          renderGifFrame(idx);
+        } else if (el.hiddenVideo.duration) {
+          const time = parseFloat(el.videoScrubber.value) / 100 * el.hiddenVideo.duration;
+          el.hiddenVideo.currentTime = time;
+        }
       }
     });
     el.btnVideoPlayPause.addEventListener("click", toggleVideoPlay);
@@ -4528,6 +5669,250 @@ void loop() {
         stepVideoFrame(1);
       }
     });
+    setupPixelArtTools();
+    setupFontGenerator();
+    setupPreviewRecorders();
+  }
+  function setupPixelArtTools() {
+    const toolBtns = [
+      { btn: el.toolPointer, tool: "pointer" },
+      { btn: el.toolPencil, tool: "pencil" },
+      { btn: el.toolEraser, tool: "eraser" },
+      { btn: el.toolText, tool: "text" }
+    ];
+    function setActiveTool(tool) {
+      pixelEditor.setTool(tool);
+      toolBtns.forEach(({ btn, tool: t }) => {
+        if (btn) btn.classList.toggle("active", t === tool);
+      });
+      if (el.pixelTextControlGroup) {
+        el.pixelTextControlGroup.style.display = tool === "text" ? "flex" : "none";
+      }
+      el.targetCanvas.style.cursor = tool === "pointer" ? "default" : "crosshair";
+    }
+    toolBtns.forEach(({ btn, tool }) => {
+      if (btn) {
+        btn.addEventListener("click", () => setActiveTool(tool));
+      }
+    });
+    const swatches = document.querySelectorAll(".swatch-btn");
+    swatches.forEach((swatch) => {
+      swatch.addEventListener("click", () => {
+        swatches.forEach((s) => s.classList.remove("active"));
+        swatch.classList.add("active");
+        const hex = swatch.getAttribute("data-color") || "#ffffff";
+        const clean = hex.replace("#", "");
+        const r = parseInt(clean.substring(0, 2), 16);
+        const g = parseInt(clean.substring(2, 4), 16);
+        const b = parseInt(clean.substring(4, 6), 16);
+        pixelEditor.setColor(r, g, b, 255);
+        if (el.pixelColorCustom) el.pixelColorCustom.value = hex;
+      });
+    });
+    if (el.pixelColorCustom) {
+      el.pixelColorCustom.addEventListener("input", () => {
+        const hex = el.pixelColorCustom.value;
+        const clean = hex.replace("#", "");
+        const r = parseInt(clean.substring(0, 2), 16);
+        const g = parseInt(clean.substring(2, 4), 16);
+        const b = parseInt(clean.substring(4, 6), 16);
+        pixelEditor.setColor(r, g, b, 255);
+        swatches.forEach((s) => s.classList.remove("active"));
+      });
+    }
+    if (el.btnPixelUndo) {
+      el.btnPixelUndo.addEventListener("click", () => {
+        if (pixelEditor.undo()) {
+          refreshCurrentFrame();
+          updatePixelBadge();
+        }
+      });
+    }
+    if (el.btnPixelClear) {
+      el.btnPixelClear.addEventListener("click", () => {
+        pixelEditor.clear();
+        refreshCurrentFrame();
+        updatePixelBadge();
+        showToast("Retoques eliminados");
+      });
+    }
+    function updatePixelBadge() {
+      if (el.pixelEditBadge) {
+        el.pixelEditBadge.textContent = `${pixelEditor.getEditCount()} ed.`;
+      }
+    }
+    let isDrawing = false;
+    function applyToolAtPointer(e) {
+      if (pixelEditor.activeTool === "pointer") return;
+      const rect = el.targetCanvas.getBoundingClientRect();
+      const scaleX = state.targetWidth / rect.width;
+      const scaleY = state.targetHeight / rect.height;
+      const px = Math.floor((e.clientX - rect.left) * scaleX);
+      const py = Math.floor((e.clientY - rect.top) * scaleY);
+      if (px < 0 || px >= state.targetWidth || py < 0 || py >= state.targetHeight) return;
+      if (pixelEditor.activeTool === "pencil") {
+        pixelEditor.setPixel(px, py, state.targetWidth, state.targetHeight);
+        refreshCurrentFrame();
+      } else if (pixelEditor.activeTool === "eraser") {
+        pixelEditor.erasePixel(px, py, state.targetWidth, state.targetHeight);
+        refreshCurrentFrame();
+      } else if (pixelEditor.activeTool === "text") {
+        const txt = el.pixelTextInput ? el.pixelTextInput.value : "ESP32";
+        pixelEditor.stampText(txt, px, py, state.targetWidth, state.targetHeight);
+        refreshCurrentFrame();
+      }
+      updatePixelBadge();
+    }
+    el.targetCanvas.addEventListener("mousedown", (e) => {
+      if (pixelEditor.activeTool === "pointer") return;
+      isDrawing = true;
+      applyToolAtPointer(e);
+    });
+    window.addEventListener("mousemove", (e) => {
+      if (!isDrawing || pixelEditor.activeTool === "pointer") return;
+      applyToolAtPointer(e);
+    });
+    window.addEventListener("mouseup", () => {
+      isDrawing = false;
+    });
+  }
+  var currentFontResult = null;
+  function setupFontGenerator() {
+    if (el.btnHeaderFontGen) {
+      el.btnHeaderFontGen.addEventListener("click", () => {
+        el.fontModalOverlay.style.display = "flex";
+        updateFontPreview();
+      });
+    }
+    const closeBtn = () => {
+      el.fontModalOverlay.style.display = "none";
+    };
+    if (el.btnCloseFontModal) el.btnCloseFontModal.addEventListener("click", closeBtn);
+    if (el.btnDismissFontModal) el.btnDismissFontModal.addEventListener("click", closeBtn);
+    el.fontModalOverlay.addEventListener("click", (e) => {
+      if (e.target === el.fontModalOverlay) closeBtn();
+    });
+    [el.fontFamilySelect, el.fontSizeSelect, el.fontWeightSelect, el.fontRangeSelect].forEach((sel) => {
+      if (sel) sel.addEventListener("change", updateFontPreview);
+    });
+    if (el.fontTestInput) {
+      el.fontTestInput.addEventListener("input", renderFontTestText);
+    }
+    if (el.btnCopyFontHeader) {
+      el.btnCopyFontHeader.addEventListener("click", async () => {
+        if (!currentFontResult) return;
+        try {
+          await navigator.clipboard.writeText(currentFontResult.headerContent);
+          showToast("\u2714 \xA1C\xF3digo C++ de fuente copiado al portapapeles!");
+        } catch (err) {
+          showToast("Error al copiar fuente al portapapeles");
+        }
+      });
+    }
+    if (el.btnDownloadFontHeader) {
+      el.btnDownloadFontHeader.addEventListener("click", async () => {
+        if (!currentFontResult) return;
+        await saveFileOrDownload(`${currentFontResult.fontName}.h`, currentFontResult.headerContent, "text/x-c", false);
+      });
+    }
+    function updateFontPreview() {
+      const family = el.fontFamilySelect?.value || "monospace";
+      const size = parseInt(el.fontSizeSelect?.value || "12", 10);
+      const weight = el.fontWeightSelect?.value || "normal";
+      const range = el.fontRangeSelect?.value || "32-126";
+      const [first, last] = range.split("-").map(Number);
+      currentFontResult = generateBitmapFont({
+        fontFamily: family,
+        fontSize: size,
+        fontWeight: weight,
+        firstChar: first,
+        lastChar: last
+      });
+      if (el.fontTotalBytesLabel) {
+        el.fontTotalBytesLabel.textContent = `${currentFontResult.totalBitmapsSize} bytes Flash | yAdvance: ${currentFontResult.yAdvance}px`;
+      }
+      if (el.fontGlyphGrid) {
+        el.fontGlyphGrid.innerHTML = "";
+        currentFontResult.glyphs.forEach((g) => {
+          const card = document.createElement("div");
+          card.className = "font-glyph-card";
+          card.title = `ASCII ${g.ascii}: '${g.char}' | ${g.width}x${g.height} px`;
+          card.innerHTML = `
+          <div class="font-glyph-char">${g.char === " " ? "&blank;" : g.char}</div>
+          <div class="font-glyph-ascii">${g.ascii}</div>
+        `;
+          el.fontGlyphGrid.appendChild(card);
+        });
+      }
+      renderFontTestText();
+    }
+    function renderFontTestText() {
+      if (!el.fontTestCanvas || !el.fontTestInput) return;
+      const ctx = el.fontTestCanvas.getContext("2d");
+      const w = el.fontTestCanvas.width;
+      const h = el.fontTestCanvas.height;
+      ctx.fillStyle = "#0a0d14";
+      ctx.fillRect(0, 0, w, h);
+      const family = el.fontFamilySelect?.value || "monospace";
+      const size = parseInt(el.fontSizeSelect?.value || "12", 10);
+      const weight = el.fontWeightSelect?.value || "normal";
+      ctx.fillStyle = "#06b6d4";
+      ctx.font = `${weight} ${size}px "${family}", monospace, sans-serif`;
+      ctx.textBaseline = "middle";
+      ctx.fillText(el.fontTestInput.value || "", 10, h / 2);
+    }
+  }
+  function setupPreviewRecorders() {
+    if (el.btnHeaderCopyClipboard) {
+      el.btnHeaderCopyClipboard.addEventListener("click", async () => {
+        const ok = await copyCanvasToClipboard(el.targetCanvas);
+        if (ok) {
+          showToast("\u2714 \xA1Imagen copiada al portapapeles!");
+        } else {
+          showToast("\u274C Error al copiar imagen al portapapeles");
+        }
+      });
+    }
+    if (el.btnHeaderRecordAnim) {
+      el.btnHeaderRecordAnim.addEventListener("click", async () => {
+        if (state.sourceType !== "video") return;
+        el.btnHeaderRecordAnim.disabled = true;
+        el.btnHeaderRecordAnim.textContent = "Grabando...";
+        try {
+          const total = currentGifAnimation ? currentGifAnimation.frames.length : Math.max(1, Math.round((state.videoOutPoint - state.videoInPoint) * state.videoTargetFps));
+          showToast(`Grabando animaci\xF3n (${total} fotogramas)...`);
+          const blob = await recordCanvasAnimation(
+            el.targetCanvas,
+            async (idx) => {
+              if (currentGifAnimation) {
+                renderGifFrame(idx);
+              } else {
+                const t = state.videoInPoint + idx / state.videoTargetFps;
+                await seekVideo(t);
+                processFrame(el.hiddenVideo);
+              }
+            },
+            total,
+            state.videoTargetFps,
+            (pct) => {
+              el.statusReady.textContent = `Grabando animaci\xF3n: ${pct}%`;
+            }
+          );
+          el.statusReady.textContent = "Listo";
+          const link = document.createElement("a");
+          link.href = URL.createObjectURL(blob);
+          link.download = `${state.variableName}_anim_preview.webm`;
+          link.click();
+          showToast("\u2714 \xA1Vista previa animada grabada y descargada!");
+        } catch (err) {
+          console.error("Error al grabar animaci\xF3n:", err);
+          showToast(`Error al grabar: ${err?.message || err}`);
+        } finally {
+          el.btnHeaderRecordAnim.disabled = false;
+          el.btnHeaderRecordAnim.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polygon points="10 8 16 12 10 16 10 8"></polygon></svg> \u{1F3AC} Grabar Animaci\xF3n`;
+        }
+      });
+    }
   }
   function updateBezelStyle(shape, name) {
     el.hardwareBezel.className = `hardware-bezel ${shape}`;
@@ -4569,27 +5954,120 @@ void loop() {
     el.pixelInspector.style.left = `${e.clientX + 15}px`;
     el.pixelInspector.style.top = `${e.clientY + 15}px`;
   }
+  var currentGifAnimation = null;
+  var currentGifFrameIdx = 0;
+  var gifPlaybackTimer = null;
   async function handleOpenFile() {
     if (window.bitmapperAPI && window.bitmapperAPI.openFile) {
       const fileInfo = await window.bitmapperAPI.openFile();
       if (!fileInfo) return;
       const fileUrl = "file:///" + fileInfo.filePath.replace(/\\/g, "/");
+      if (fileInfo.fileName.toLowerCase().endsWith(".gif")) {
+        try {
+          const resp = await fetch(fileUrl);
+          const blob = await resp.blob();
+          await loadGifMedia(blob, fileInfo.fileName, fileInfo.baseName);
+          return;
+        } catch (err) {
+          console.warn("Error al leer GIF via fetch, usando fallback:", err);
+        }
+      }
       loadMediaFromUrl(fileUrl, fileInfo.fileName, fileInfo.baseName, fileInfo.isVideo);
     } else {
       el.hiddenFileInput.click();
     }
   }
-  function handleFileInputChange(e) {
+  async function handleFileInputChange(e) {
     const target = e.target;
     const file = target.files?.[0];
     if (!file) return;
+    const baseName = file.name.replace(/\.[^/.]+$/, "");
+    if (file.name.toLowerCase().endsWith(".gif") || file.type === "image/gif") {
+      await loadGifMedia(file, file.name, baseName);
+      el.hiddenFileInput.value = "";
+      return;
+    }
     const isVideo = file.type.startsWith("video/") || /\.(mp4|webm|mov|avi|mkv)$/i.test(file.name);
     const url = URL.createObjectURL(file);
-    const baseName = file.name.replace(/\.[^/.]+$/, "");
     loadMediaFromUrl(url, file.name, baseName, isVideo);
     el.hiddenFileInput.value = "";
   }
+  async function loadGifMedia(fileOrBlob, fileName, baseName) {
+    try {
+      showToast(`Decodificando GIF animado "${fileName}"...`);
+      const decoded = await decodeGifAnimation(fileOrBlob);
+      if (!decoded.isAnimated || decoded.frames.length <= 1) {
+        const url = URL.createObjectURL(fileOrBlob);
+        loadMediaFromUrl(url, fileName, baseName, false);
+        return;
+      }
+      if (gifPlaybackTimer) clearTimeout(gifPlaybackTimer);
+      currentGifAnimation = decoded;
+      currentGifFrameIdx = 0;
+      state.sourceType = "video";
+      state.sourceFileName = fileName;
+      state.sourceBaseName = baseName;
+      state.variableName = baseName.replace(/[^a-zA-Z0-9_]/g, "_").toLowerCase();
+      el.variableNameInput.value = state.variableName;
+      state.sourceWidth = decoded.width;
+      state.sourceHeight = decoded.height;
+      state.videoDuration = decoded.totalDurationMs / 1e3;
+      state.videoInPoint = 0;
+      state.videoOutPoint = state.videoDuration;
+      state.videoTargetFps = decoded.averageFps;
+      state.videoPlaying = false;
+      el.sourceTypeBadge.textContent = "GIF ANIMADO";
+      el.sourceTypeBadge.style.background = "rgba(236, 72, 153, 0.2)";
+      el.sourceTypeBadge.style.color = "#f472b6";
+      el.videoSection.style.display = "block";
+      el.videoTimelineBar.classList.add("visible");
+      if (el.btnHeaderRecordAnim) el.btnHeaderRecordAnim.style.display = "inline-flex";
+      el.sourceDetails.innerHTML = `<strong>${fileName}</strong><br>Resoluci\xF3n: ${decoded.width}\xD7${decoded.height} px<br>Fotogramas: ${decoded.frameCount} cuadros (~${decoded.averageFps} FPS)`;
+      el.videoDurationBadge.textContent = `${state.videoDuration.toFixed(1)}s`;
+      el.totalTimeLabel.textContent = formatTime(state.videoDuration);
+      updateRangeDisplay();
+      updateVideoStats();
+      updateExportFormatsForSource();
+      updatePlayPauseIcon();
+      renderGifFrame(0);
+      showToast(`\u2714 GIF animado: ${decoded.frameCount} fotogramas a ~${decoded.averageFps} FPS`);
+    } catch (err) {
+      console.warn("Fallback a imagen est\xE1ndar para GIF:", err);
+      const url = URL.createObjectURL(fileOrBlob);
+      loadMediaFromUrl(url, fileName, baseName, false);
+    }
+  }
+  function renderGifFrame(idx) {
+    if (!currentGifAnimation || !currentGifAnimation.frames[idx]) return;
+    currentGifFrameIdx = idx;
+    const f = currentGifAnimation.frames[idx];
+    processFrame(f.bitmap);
+    const currentTimeSec = idx / currentGifAnimation.frames.length * state.videoDuration;
+    el.currentTimeLabel.textContent = formatTime(currentTimeSec);
+    el.videoScrubber.value = String(idx / (currentGifAnimation.frames.length - 1 || 1) * 100);
+    el.currentFrameNum.textContent = `F: ${idx + 1}/${currentGifAnimation.frames.length}`;
+  }
+  function playNextGifFrame() {
+    if (!currentGifAnimation || !state.videoPlaying) return;
+    currentGifFrameIdx = (currentGifFrameIdx + 1) % currentGifAnimation.frames.length;
+    renderGifFrame(currentGifFrameIdx);
+    const delay = currentGifAnimation.frames[currentGifFrameIdx].durationMs || 100;
+    gifPlaybackTimer = setTimeout(playNextGifFrame, delay);
+  }
+  function refreshCurrentFrame() {
+    if (state.sourceType === "video") {
+      if (currentGifAnimation) {
+        renderGifFrame(currentGifFrameIdx);
+      } else {
+        processFrame(el.hiddenVideo);
+      }
+    } else if (state.sourceElement) {
+      processFrame(state.sourceElement);
+    }
+  }
   function loadMediaFromUrl(url, fileName, baseName, isVideo) {
+    if (gifPlaybackTimer) clearTimeout(gifPlaybackTimer);
+    currentGifAnimation = null;
     state.sourceFileName = fileName;
     state.sourceBaseName = baseName;
     state.variableName = baseName.replace(/[^a-zA-Z0-9_]/g, "_").toLowerCase();
@@ -4602,6 +6080,7 @@ void loop() {
       el.sourceTypeBadge.style.color = "var(--accent-violet)";
       el.videoSection.style.display = "block";
       el.videoTimelineBar.classList.add("visible");
+      if (el.btnHeaderRecordAnim) el.btnHeaderRecordAnim.style.display = "inline-flex";
       updateExportFormatsForSource();
       el.hiddenVideo.src = url;
       el.hiddenVideo.load();
@@ -4626,6 +6105,7 @@ void loop() {
       el.sourceTypeBadge.style.color = "var(--accent-cyan)";
       el.videoSection.style.display = "none";
       el.videoTimelineBar.classList.remove("visible");
+      if (el.btnHeaderRecordAnim) el.btnHeaderRecordAnim.style.display = "none";
       updateExportFormatsForSource();
       const img = new Image();
       img.crossOrigin = "anonymous";
@@ -4689,9 +6169,13 @@ void loop() {
       if (e.dataTransfer && e.dataTransfer.files.length > 0) {
         if (e.dataTransfer.files.length === 1) {
           const file = e.dataTransfer.files[0];
+          const baseName = file.name.replace(/\.[^/.]+$/, "");
+          if (file.name.toLowerCase().endsWith(".gif") || file.type === "image/gif") {
+            loadGifMedia(file, file.name, baseName);
+            return;
+          }
           const isVideo = file.type.startsWith("video/") || /\.(mp4|webm|mov|avi|mkv)$/i.test(file.name);
           const url = URL.createObjectURL(file);
-          const baseName = file.name.replace(/\.[^/.]+$/, "");
           loadMediaFromUrl(url, file.name, baseName, isVideo);
         } else {
           const filesToAdd = [];
@@ -4710,6 +6194,17 @@ void loop() {
   }
   function toggleVideoPlay() {
     if (state.sourceType !== "video") return;
+    if (currentGifAnimation) {
+      if (state.videoPlaying) {
+        state.videoPlaying = false;
+        if (gifPlaybackTimer) clearTimeout(gifPlaybackTimer);
+      } else {
+        state.videoPlaying = true;
+        playNextGifFrame();
+      }
+      updatePlayPauseIcon();
+      return;
+    }
     if (state.videoPlaying) {
       el.hiddenVideo.pause();
       state.videoPlaying = false;
@@ -4728,6 +6223,14 @@ void loop() {
   }
   function stepVideoFrame(dir) {
     if (state.sourceType !== "video") return;
+    if (currentGifAnimation) {
+      state.videoPlaying = false;
+      if (gifPlaybackTimer) clearTimeout(gifPlaybackTimer);
+      updatePlayPauseIcon();
+      const nextIdx = (currentGifFrameIdx + dir + currentGifAnimation.frames.length) % currentGifAnimation.frames.length;
+      renderGifFrame(nextIdx);
+      return;
+    }
     el.hiddenVideo.pause();
     state.videoPlaying = false;
     updatePlayPauseIcon();
@@ -4969,9 +6472,10 @@ void loop() {
     );
     const finalImgData = targetCtx.createImageData(tw, th);
     finalImgData.data.set(quantizedData);
+    pixelEditor.applyToImageData(finalImgData, tw, th);
     targetCtx.putImageData(finalImgData, 0, 0);
     compareCtx.putImageData(finalImgData, 0, 0);
-    const encoded = encodeBitmap(quantizedData, tw, th, {
+    const encoded = encodeBitmap(finalImgData.data, tw, th, {
       colorFormat: state.colorFormat,
       endian: state.endian,
       swapBytes: state.swapBytes,
@@ -5053,6 +6557,13 @@ void loop() {
     } else if (ef === "python") {
       el.codePreviewTitle.textContent = `${name}.py (MicroPython)`;
       code = generateMicroPython(name, tw, th, bytes);
+    } else if (ef === "rle_compressed") {
+      const rleRes = compressRLE(bytes);
+      el.codePreviewTitle.innerHTML = `${name}_rle.h <span class="rle-badge">RLE: ${rleRes.originalSize}B &rarr; ${rleRes.compressedSize}B (${rleRes.ratioPercent}%)</span>`;
+      code = generateRLECHeader(name, tw, th, bytes, {
+        colorFormat: state.colorFormat,
+        useProgmem: state.useProgmem
+      });
     } else if (ef === "png_preview") {
       el.codePreviewTitle.textContent = `${name}_preview.png (Imagen Renderizada)`;
       code = `// Al pulsar "Exportar", se guardar\xE1 una imagen PNG exacta
@@ -5106,6 +6617,14 @@ void loop() {
       await saveFileOrDownload(`${name}.h`, content, "text/x-c", false);
     } else if (ef === "binary") {
       await saveFileOrDownload(`${name}.bin`, bytes, "application/octet-stream", true);
+    } else if (ef === "rle_compressed") {
+      const rleRes = compressRLE(bytes);
+      const rleHeader = generateRLECHeader(name, tw, th, bytes, {
+        colorFormat: state.colorFormat,
+        useProgmem: state.useProgmem
+      });
+      showToast(`\u2714 RLE: ${rleRes.originalSize}B -> ${rleRes.compressedSize}B (${rleRes.ratioPercent}%)`);
+      await saveFileOrDownload(`${name}_rle.h`, rleHeader, "text/x-c", false);
     } else if (ef === "bmpr") {
       const bmprData = generateBmprBinary(tw, th, bytes, 1, 15, state.colorFormat, state.swapBytes);
       await saveFileOrDownload(`${name}.bmpr`, bmprData, "application/octet-stream", true);
@@ -5173,18 +6692,34 @@ Un ESP32 est\xE1ndar suele tener 4 MB de Flash total (con ~2.5 MB libres para c\
     updatePlayPauseIcon();
     const frames = [];
     const origTime = el.hiddenVideo.currentTime;
-    for (let t = inP; t <= outP + 1e-4; t += step) {
-      await seekVideo(t);
-      processFrame(el.hiddenVideo);
-      if (state.currentEncoded) {
-        frames.push({
-          time: t,
-          values: [...state.currentEncoded.values],
-          bytes: new Uint8Array(state.currentEncoded.bytes)
-        });
+    if (currentGifAnimation) {
+      const total = currentGifAnimation.frames.length;
+      for (let i = 0; i < total; i++) {
+        processFrame(currentGifAnimation.frames[i].bitmap);
+        if (state.currentEncoded) {
+          frames.push({
+            time: i / total * state.videoDuration,
+            values: [...state.currentEncoded.values],
+            bytes: new Uint8Array(state.currentEncoded.bytes)
+          });
+        }
+        el.statusReady.textContent = `Extrayendo fotograma ${frames.length} / ${total}...`;
+        await new Promise((r) => setTimeout(r, 10));
       }
-      el.statusReady.textContent = `Extrayendo fotograma ${frames.length} / ${expectedFrames}...`;
-      await new Promise((r) => setTimeout(r, 15));
+    } else {
+      for (let t = inP; t <= outP + 1e-4; t += step) {
+        await seekVideo(t);
+        processFrame(el.hiddenVideo);
+        if (state.currentEncoded) {
+          frames.push({
+            time: t,
+            values: [...state.currentEncoded.values],
+            bytes: new Uint8Array(state.currentEncoded.bytes)
+          });
+        }
+        el.statusReady.textContent = `Extrayendo fotograma ${frames.length} / ${expectedFrames}...`;
+        await new Promise((r) => setTimeout(r, 15));
+      }
     }
     el.hiddenVideo.currentTime = origTime;
     el.statusReady.textContent = "Listo";

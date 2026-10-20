@@ -23,6 +23,12 @@ import {
   generateBmprBinary
 } from '../engine/exporters';
 import { bleUploader, BLEProgress, SDBinFile } from './ble-uploader';
+import { isRetroPalette, RETRO_PALETTES } from '../engine/retro-palettes';
+import { compressRLE, generateRLECHeader } from '../engine/rle-compressor';
+import { decodeGifAnimation, isGifFile, DecodedGifResult } from '../engine/gif-decoder';
+import { pixelEditor, PixelEditTool } from '../engine/pixel-editor';
+import { generateBitmapFont } from '../engine/font-generator';
+import { copyCanvasToClipboard, downloadCanvasImage, recordCanvasAnimation } from '../engine/preview-recorder';
 
 interface AppState {
   sourceType: 'image' | 'video';
@@ -281,7 +287,38 @@ const el = {
   btnBleApplySettings: document.getElementById('btnBleApplySettings') as HTMLButtonElement,
   btnBleRemotePrev: document.getElementById('btnBleRemotePrev') as HTMLButtonElement,
   btnBleRemoteNext: document.getElementById('btnBleRemoteNext') as HTMLButtonElement,
-  bleOptBmprHeader: document.getElementById('bleOptBmprHeader') as HTMLInputElement
+  bleOptBmprHeader: document.getElementById('bleOptBmprHeader') as HTMLInputElement,
+
+  // Utilities & Pixel Art & Font Gen
+  btnHeaderFontGen: document.getElementById('btnHeaderFontGen') as HTMLButtonElement,
+  btnHeaderCopyClipboard: document.getElementById('btnHeaderCopyClipboard') as HTMLButtonElement,
+  btnHeaderRecordAnim: document.getElementById('btnHeaderRecordAnim') as HTMLButtonElement,
+
+  pixelArtToolbar: document.getElementById('pixelArtToolbar') as HTMLElement,
+  toolPointer: document.getElementById('toolPointer') as HTMLButtonElement,
+  toolPencil: document.getElementById('toolPencil') as HTMLButtonElement,
+  toolEraser: document.getElementById('toolEraser') as HTMLButtonElement,
+  toolText: document.getElementById('toolText') as HTMLButtonElement,
+  pixelColorCustom: document.getElementById('pixelColorCustom') as HTMLInputElement,
+  pixelTextInput: document.getElementById('pixelTextInput') as HTMLInputElement,
+  pixelTextControlGroup: document.getElementById('pixelTextControlGroup') as HTMLElement,
+  btnPixelUndo: document.getElementById('btnPixelUndo') as HTMLButtonElement,
+  btnPixelClear: document.getElementById('btnPixelClear') as HTMLButtonElement,
+  pixelEditBadge: document.getElementById('pixelEditBadge') as HTMLElement,
+
+  fontModalOverlay: document.getElementById('fontModalOverlay') as HTMLElement,
+  btnCloseFontModal: document.getElementById('btnCloseFontModal') as HTMLButtonElement,
+  btnDismissFontModal: document.getElementById('btnDismissFontModal') as HTMLButtonElement,
+  btnCopyFontHeader: document.getElementById('btnCopyFontHeader') as HTMLButtonElement,
+  btnDownloadFontHeader: document.getElementById('btnDownloadFontHeader') as HTMLButtonElement,
+  fontFamilySelect: document.getElementById('fontFamilySelect') as HTMLSelectElement,
+  fontSizeSelect: document.getElementById('fontSizeSelect') as HTMLSelectElement,
+  fontWeightSelect: document.getElementById('fontWeightSelect') as HTMLSelectElement,
+  fontRangeSelect: document.getElementById('fontRangeSelect') as HTMLSelectElement,
+  fontGlyphGrid: document.getElementById('fontGlyphGrid') as HTMLElement,
+  fontTotalBytesLabel: document.getElementById('fontTotalBytesLabel') as HTMLElement,
+  fontTestInput: document.getElementById('fontTestInput') as HTMLInputElement,
+  fontTestCanvas: document.getElementById('fontTestCanvas') as HTMLCanvasElement
 };
 
 // Canvas 2D contexts
@@ -570,9 +607,18 @@ function setupEvents(): void {
   });
 
   el.videoScrubber.addEventListener('input', () => {
-    if (state.sourceType === 'video' && el.hiddenVideo.duration) {
-      const time = (parseFloat(el.videoScrubber.value) / 100) * el.hiddenVideo.duration;
-      el.hiddenVideo.currentTime = time;
+    if (state.sourceType === 'video') {
+      if (currentGifAnimation) {
+        const pct = parseFloat(el.videoScrubber.value) / 100;
+        const idx = Math.min(
+          currentGifAnimation.frames.length - 1,
+          Math.floor(pct * currentGifAnimation.frames.length)
+        );
+        renderGifFrame(idx);
+      } else if (el.hiddenVideo.duration) {
+        const time = (parseFloat(el.videoScrubber.value) / 100) * el.hiddenVideo.duration;
+        el.hiddenVideo.currentTime = time;
+      }
     }
   });
 
@@ -839,6 +885,288 @@ function setupEvents(): void {
       stepVideoFrame(1);
     }
   });
+
+  setupPixelArtTools();
+  setupFontGenerator();
+  setupPreviewRecorders();
+}
+
+function setupPixelArtTools(): void {
+  const toolBtns: Array<{ btn: HTMLButtonElement; tool: PixelEditTool }> = [
+    { btn: el.toolPointer, tool: 'pointer' },
+    { btn: el.toolPencil, tool: 'pencil' },
+    { btn: el.toolEraser, tool: 'eraser' },
+    { btn: el.toolText, tool: 'text' }
+  ];
+
+  function setActiveTool(tool: PixelEditTool) {
+    pixelEditor.setTool(tool);
+    toolBtns.forEach(({ btn, tool: t }) => {
+      if (btn) btn.classList.toggle('active', t === tool);
+    });
+    if (el.pixelTextControlGroup) {
+      el.pixelTextControlGroup.style.display = tool === 'text' ? 'flex' : 'none';
+    }
+    el.targetCanvas.style.cursor = tool === 'pointer' ? 'default' : 'crosshair';
+  }
+
+  toolBtns.forEach(({ btn, tool }) => {
+    if (btn) {
+      btn.addEventListener('click', () => setActiveTool(tool));
+    }
+  });
+
+  // Palette swatches
+  const swatches = document.querySelectorAll('.swatch-btn');
+  swatches.forEach(swatch => {
+    swatch.addEventListener('click', () => {
+      swatches.forEach(s => s.classList.remove('active'));
+      swatch.classList.add('active');
+      const hex = swatch.getAttribute('data-color') || '#ffffff';
+      const clean = hex.replace('#', '');
+      const r = parseInt(clean.substring(0, 2), 16);
+      const g = parseInt(clean.substring(2, 4), 16);
+      const b = parseInt(clean.substring(4, 6), 16);
+      pixelEditor.setColor(r, g, b, 255);
+      if (el.pixelColorCustom) el.pixelColorCustom.value = hex;
+    });
+  });
+
+  if (el.pixelColorCustom) {
+    el.pixelColorCustom.addEventListener('input', () => {
+      const hex = el.pixelColorCustom.value;
+      const clean = hex.replace('#', '');
+      const r = parseInt(clean.substring(0, 2), 16);
+      const g = parseInt(clean.substring(2, 4), 16);
+      const b = parseInt(clean.substring(4, 6), 16);
+      pixelEditor.setColor(r, g, b, 255);
+      swatches.forEach(s => s.classList.remove('active'));
+    });
+  }
+
+  if (el.btnPixelUndo) {
+    el.btnPixelUndo.addEventListener('click', () => {
+      if (pixelEditor.undo()) {
+        refreshCurrentFrame();
+        updatePixelBadge();
+      }
+    });
+  }
+
+  if (el.btnPixelClear) {
+    el.btnPixelClear.addEventListener('click', () => {
+      pixelEditor.clear();
+      refreshCurrentFrame();
+      updatePixelBadge();
+      showToast('Retoques eliminados');
+    });
+  }
+
+  function updatePixelBadge() {
+    if (el.pixelEditBadge) {
+      el.pixelEditBadge.textContent = `${pixelEditor.getEditCount()} ed.`;
+    }
+  }
+
+  let isDrawing = false;
+
+  function applyToolAtPointer(e: MouseEvent) {
+    if (pixelEditor.activeTool === 'pointer') return;
+    const rect = el.targetCanvas.getBoundingClientRect();
+    const scaleX = state.targetWidth / rect.width;
+    const scaleY = state.targetHeight / rect.height;
+    const px = Math.floor((e.clientX - rect.left) * scaleX);
+    const py = Math.floor((e.clientY - rect.top) * scaleY);
+
+    if (px < 0 || px >= state.targetWidth || py < 0 || py >= state.targetHeight) return;
+
+    if (pixelEditor.activeTool === 'pencil') {
+      pixelEditor.setPixel(px, py, state.targetWidth, state.targetHeight);
+      refreshCurrentFrame();
+    } else if (pixelEditor.activeTool === 'eraser') {
+      pixelEditor.erasePixel(px, py, state.targetWidth, state.targetHeight);
+      refreshCurrentFrame();
+    } else if (pixelEditor.activeTool === 'text') {
+      const txt = el.pixelTextInput ? el.pixelTextInput.value : 'ESP32';
+      pixelEditor.stampText(txt, px, py, state.targetWidth, state.targetHeight);
+      refreshCurrentFrame();
+    }
+    updatePixelBadge();
+  }
+
+  el.targetCanvas.addEventListener('mousedown', (e) => {
+    if (pixelEditor.activeTool === 'pointer') return;
+    isDrawing = true;
+    applyToolAtPointer(e);
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!isDrawing || pixelEditor.activeTool === 'pointer') return;
+    applyToolAtPointer(e);
+  });
+
+  window.addEventListener('mouseup', () => {
+    isDrawing = false;
+  });
+}
+
+let currentFontResult: ReturnType<typeof generateBitmapFont> | null = null;
+
+function setupFontGenerator(): void {
+  if (el.btnHeaderFontGen) {
+    el.btnHeaderFontGen.addEventListener('click', () => {
+      el.fontModalOverlay.style.display = 'flex';
+      updateFontPreview();
+    });
+  }
+
+  const closeBtn = () => { el.fontModalOverlay.style.display = 'none'; };
+  if (el.btnCloseFontModal) el.btnCloseFontModal.addEventListener('click', closeBtn);
+  if (el.btnDismissFontModal) el.btnDismissFontModal.addEventListener('click', closeBtn);
+  el.fontModalOverlay.addEventListener('click', (e) => {
+    if (e.target === el.fontModalOverlay) closeBtn();
+  });
+
+  [el.fontFamilySelect, el.fontSizeSelect, el.fontWeightSelect, el.fontRangeSelect].forEach(sel => {
+    if (sel) sel.addEventListener('change', updateFontPreview);
+  });
+
+  if (el.fontTestInput) {
+    el.fontTestInput.addEventListener('input', renderFontTestText);
+  }
+
+  if (el.btnCopyFontHeader) {
+    el.btnCopyFontHeader.addEventListener('click', async () => {
+      if (!currentFontResult) return;
+      try {
+        await navigator.clipboard.writeText(currentFontResult.headerContent);
+        showToast('✔ ¡Código C++ de fuente copiado al portapapeles!');
+      } catch (err) {
+        showToast('Error al copiar fuente al portapapeles');
+      }
+    });
+  }
+
+  if (el.btnDownloadFontHeader) {
+    el.btnDownloadFontHeader.addEventListener('click', async () => {
+      if (!currentFontResult) return;
+      await saveFileOrDownload(`${currentFontResult.fontName}.h`, currentFontResult.headerContent, 'text/x-c', false);
+    });
+  }
+
+  function updateFontPreview() {
+    const family = el.fontFamilySelect?.value || 'monospace';
+    const size = parseInt(el.fontSizeSelect?.value || '12', 10);
+    const weight = el.fontWeightSelect?.value || 'normal';
+    const range = el.fontRangeSelect?.value || '32-126';
+    const [first, last] = range.split('-').map(Number);
+
+    currentFontResult = generateBitmapFont({
+      fontFamily: family,
+      fontSize: size,
+      fontWeight: weight,
+      firstChar: first,
+      lastChar: last
+    });
+
+    if (el.fontTotalBytesLabel) {
+      el.fontTotalBytesLabel.textContent = `${currentFontResult.totalBitmapsSize} bytes Flash | yAdvance: ${currentFontResult.yAdvance}px`;
+    }
+
+    if (el.fontGlyphGrid) {
+      el.fontGlyphGrid.innerHTML = '';
+      currentFontResult.glyphs.forEach(g => {
+        const card = document.createElement('div');
+        card.className = 'font-glyph-card';
+        card.title = `ASCII ${g.ascii}: '${g.char}' | ${g.width}x${g.height} px`;
+        card.innerHTML = `
+          <div class="font-glyph-char">${g.char === ' ' ? '&blank;' : g.char}</div>
+          <div class="font-glyph-ascii">${g.ascii}</div>
+        `;
+        el.fontGlyphGrid.appendChild(card);
+      });
+    }
+
+    renderFontTestText();
+  }
+
+  function renderFontTestText() {
+    if (!el.fontTestCanvas || !el.fontTestInput) return;
+    const ctx = el.fontTestCanvas.getContext('2d')!;
+    const w = el.fontTestCanvas.width;
+    const h = el.fontTestCanvas.height;
+    ctx.fillStyle = '#0a0d14';
+    ctx.fillRect(0, 0, w, h);
+
+    const family = el.fontFamilySelect?.value || 'monospace';
+    const size = parseInt(el.fontSizeSelect?.value || '12', 10);
+    const weight = el.fontWeightSelect?.value || 'normal';
+
+    ctx.fillStyle = '#06b6d4';
+    ctx.font = `${weight} ${size}px "${family}", monospace, sans-serif`;
+    ctx.textBaseline = 'middle';
+    ctx.fillText(el.fontTestInput.value || '', 10, h / 2);
+  }
+}
+
+function setupPreviewRecorders(): void {
+  if (el.btnHeaderCopyClipboard) {
+    el.btnHeaderCopyClipboard.addEventListener('click', async () => {
+      const ok = await copyCanvasToClipboard(el.targetCanvas);
+      if (ok) {
+        showToast('✔ ¡Imagen copiada al portapapeles!');
+      } else {
+        showToast('❌ Error al copiar imagen al portapapeles');
+      }
+    });
+  }
+
+  if (el.btnHeaderRecordAnim) {
+    el.btnHeaderRecordAnim.addEventListener('click', async () => {
+      if (state.sourceType !== 'video') return;
+      el.btnHeaderRecordAnim.disabled = true;
+      el.btnHeaderRecordAnim.textContent = 'Grabando...';
+
+      try {
+        const total = currentGifAnimation
+          ? currentGifAnimation.frames.length
+          : Math.max(1, Math.round((state.videoOutPoint - state.videoInPoint) * state.videoTargetFps));
+
+        showToast(`Grabando animación (${total} fotogramas)...`);
+
+        const blob = await recordCanvasAnimation(
+          el.targetCanvas,
+          async (idx) => {
+            if (currentGifAnimation) {
+              renderGifFrame(idx);
+            } else {
+              const t = state.videoInPoint + (idx / state.videoTargetFps);
+              await seekVideo(t);
+              processFrame(el.hiddenVideo);
+            }
+          },
+          total,
+          state.videoTargetFps,
+          (pct) => {
+            el.statusReady.textContent = `Grabando animación: ${pct}%`;
+          }
+        );
+
+        el.statusReady.textContent = 'Listo';
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `${state.variableName}_anim_preview.webm`;
+        link.click();
+        showToast('✔ ¡Vista previa animada grabada y descargada!');
+      } catch (err: any) {
+        console.error('Error al grabar animación:', err);
+        showToast(`Error al grabar: ${err?.message || err}`);
+      } finally {
+        el.btnHeaderRecordAnim.disabled = false;
+        el.btnHeaderRecordAnim.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polygon points="10 8 16 12 10 16 10 8"></polygon></svg> 🎬 Grabar Animación`;
+      }
+    });
+  }
 }
 
 function updateBezelStyle(shape: string, name: string): void {
@@ -891,31 +1219,139 @@ function handlePixelHover(e: MouseEvent): void {
   el.pixelInspector.style.top = `${e.clientY + 15}px`;
 }
 
+let currentGifAnimation: DecodedGifResult | null = null;
+let currentGifFrameIdx = 0;
+let gifPlaybackTimer: ReturnType<typeof setTimeout> | null = null;
+
 async function handleOpenFile(): Promise<void> {
   if (window.bitmapperAPI && window.bitmapperAPI.openFile) {
     const fileInfo = await window.bitmapperAPI.openFile();
     if (!fileInfo) return;
 
     const fileUrl = 'file:///' + fileInfo.filePath.replace(/\\/g, '/');
+    if (fileInfo.fileName.toLowerCase().endsWith('.gif')) {
+      try {
+        const resp = await fetch(fileUrl);
+        const blob = await resp.blob();
+        await loadGifMedia(blob, fileInfo.fileName, fileInfo.baseName);
+        return;
+      } catch (err) {
+        console.warn('Error al leer GIF via fetch, usando fallback:', err);
+      }
+    }
     loadMediaFromUrl(fileUrl, fileInfo.fileName, fileInfo.baseName, fileInfo.isVideo);
   } else {
     el.hiddenFileInput.click();
   }
 }
 
-function handleFileInputChange(e: Event): void {
+async function handleFileInputChange(e: Event): Promise<void> {
   const target = e.target as HTMLInputElement;
   const file = target.files?.[0];
   if (!file) return;
 
+  const baseName = file.name.replace(/\.[^/.]+$/, '');
+  if (file.name.toLowerCase().endsWith('.gif') || file.type === 'image/gif') {
+    await loadGifMedia(file, file.name, baseName);
+    el.hiddenFileInput.value = '';
+    return;
+  }
+
   const isVideo = file.type.startsWith('video/') || /\.(mp4|webm|mov|avi|mkv)$/i.test(file.name);
   const url = URL.createObjectURL(file);
-  const baseName = file.name.replace(/\.[^/.]+$/, '');
   loadMediaFromUrl(url, file.name, baseName, isVideo);
   el.hiddenFileInput.value = '';
 }
 
+async function loadGifMedia(fileOrBlob: Blob, fileName: string, baseName: string): Promise<void> {
+  try {
+    showToast(`Decodificando GIF animado "${fileName}"...`);
+    const decoded = await decodeGifAnimation(fileOrBlob);
+    if (!decoded.isAnimated || decoded.frames.length <= 1) {
+      const url = URL.createObjectURL(fileOrBlob);
+      loadMediaFromUrl(url, fileName, baseName, false);
+      return;
+    }
+
+    if (gifPlaybackTimer) clearTimeout(gifPlaybackTimer);
+    currentGifAnimation = decoded;
+    currentGifFrameIdx = 0;
+
+    state.sourceType = 'video';
+    state.sourceFileName = fileName;
+    state.sourceBaseName = baseName;
+    state.variableName = baseName.replace(/[^a-zA-Z0-9_]/g, '_').toLowerCase();
+    el.variableNameInput.value = state.variableName;
+
+    state.sourceWidth = decoded.width;
+    state.sourceHeight = decoded.height;
+    state.videoDuration = decoded.totalDurationMs / 1000;
+    state.videoInPoint = 0;
+    state.videoOutPoint = state.videoDuration;
+    state.videoTargetFps = decoded.averageFps;
+    state.videoPlaying = false;
+
+    el.sourceTypeBadge.textContent = 'GIF ANIMADO';
+    el.sourceTypeBadge.style.background = 'rgba(236, 72, 153, 0.2)';
+    el.sourceTypeBadge.style.color = '#f472b6';
+    el.videoSection.style.display = 'block';
+    el.videoTimelineBar.classList.add('visible');
+    if (el.btnHeaderRecordAnim) el.btnHeaderRecordAnim.style.display = 'inline-flex';
+
+    el.sourceDetails.innerHTML = `<strong>${fileName}</strong><br>Resolución: ${decoded.width}×${decoded.height} px<br>Fotogramas: ${decoded.frameCount} cuadros (~${decoded.averageFps} FPS)`;
+    el.videoDurationBadge.textContent = `${state.videoDuration.toFixed(1)}s`;
+    el.totalTimeLabel.textContent = formatTime(state.videoDuration);
+
+    updateRangeDisplay();
+    updateVideoStats();
+    updateExportFormatsForSource();
+    updatePlayPauseIcon();
+
+    renderGifFrame(0);
+    showToast(`✔ GIF animado: ${decoded.frameCount} fotogramas a ~${decoded.averageFps} FPS`);
+  } catch (err: any) {
+    console.warn('Fallback a imagen estándar para GIF:', err);
+    const url = URL.createObjectURL(fileOrBlob);
+    loadMediaFromUrl(url, fileName, baseName, false);
+  }
+}
+
+function renderGifFrame(idx: number): void {
+  if (!currentGifAnimation || !currentGifAnimation.frames[idx]) return;
+  currentGifFrameIdx = idx;
+  const f = currentGifAnimation.frames[idx];
+  processFrame(f.bitmap);
+
+  const currentTimeSec = (idx / currentGifAnimation.frames.length) * state.videoDuration;
+  el.currentTimeLabel.textContent = formatTime(currentTimeSec);
+  el.videoScrubber.value = String((idx / (currentGifAnimation.frames.length - 1 || 1)) * 100);
+  el.currentFrameNum.textContent = `F: ${idx + 1}/${currentGifAnimation.frames.length}`;
+}
+
+function playNextGifFrame(): void {
+  if (!currentGifAnimation || !state.videoPlaying) return;
+  currentGifFrameIdx = (currentGifFrameIdx + 1) % currentGifAnimation.frames.length;
+  renderGifFrame(currentGifFrameIdx);
+  const delay = currentGifAnimation.frames[currentGifFrameIdx].durationMs || 100;
+  gifPlaybackTimer = setTimeout(playNextGifFrame, delay);
+}
+
+function refreshCurrentFrame(): void {
+  if (state.sourceType === 'video') {
+    if (currentGifAnimation) {
+      renderGifFrame(currentGifFrameIdx);
+    } else {
+      processFrame(el.hiddenVideo);
+    }
+  } else if (state.sourceElement) {
+    processFrame(state.sourceElement);
+  }
+}
+
 function loadMediaFromUrl(url: string, fileName: string, baseName: string, isVideo: boolean): void {
+  if (gifPlaybackTimer) clearTimeout(gifPlaybackTimer);
+  currentGifAnimation = null;
+
   state.sourceFileName = fileName;
   state.sourceBaseName = baseName;
   state.variableName = baseName.replace(/[^a-zA-Z0-9_]/g, '_').toLowerCase();
@@ -929,6 +1365,7 @@ function loadMediaFromUrl(url: string, fileName: string, baseName: string, isVid
     el.sourceTypeBadge.style.color = 'var(--accent-violet)';
     el.videoSection.style.display = 'block';
     el.videoTimelineBar.classList.add('visible');
+    if (el.btnHeaderRecordAnim) el.btnHeaderRecordAnim.style.display = 'inline-flex';
     updateExportFormatsForSource();
 
     el.hiddenVideo.src = url;
@@ -957,6 +1394,7 @@ function loadMediaFromUrl(url: string, fileName: string, baseName: string, isVid
     el.sourceTypeBadge.style.color = 'var(--accent-cyan)';
     el.videoSection.style.display = 'none';
     el.videoTimelineBar.classList.remove('visible');
+    if (el.btnHeaderRecordAnim) el.btnHeaderRecordAnim.style.display = 'none';
     updateExportFormatsForSource();
 
     const img = new Image();
@@ -1028,9 +1466,13 @@ function setupDragAndDrop(): void {
     if (e.dataTransfer && e.dataTransfer.files.length > 0) {
       if (e.dataTransfer.files.length === 1) {
         const file = e.dataTransfer.files[0];
+        const baseName = file.name.replace(/\.[^/.]+$/, '');
+        if (file.name.toLowerCase().endsWith('.gif') || file.type === 'image/gif') {
+          loadGifMedia(file, file.name, baseName);
+          return;
+        }
         const isVideo = file.type.startsWith('video/') || /\.(mp4|webm|mov|avi|mkv)$/i.test(file.name);
         const url = URL.createObjectURL(file);
-        const baseName = file.name.replace(/\.[^/.]+$/, '');
         loadMediaFromUrl(url, file.name, baseName, isVideo);
       } else {
         const filesToAdd: Array<{ name: string; file: File; isBin: boolean }> = [];
@@ -1050,6 +1492,19 @@ function setupDragAndDrop(): void {
 
 function toggleVideoPlay(): void {
   if (state.sourceType !== 'video') return;
+
+  if (currentGifAnimation) {
+    if (state.videoPlaying) {
+      state.videoPlaying = false;
+      if (gifPlaybackTimer) clearTimeout(gifPlaybackTimer);
+    } else {
+      state.videoPlaying = true;
+      playNextGifFrame();
+    }
+    updatePlayPauseIcon();
+    return;
+  }
+
   if (state.videoPlaying) {
     el.hiddenVideo.pause();
     state.videoPlaying = false;
@@ -1070,6 +1525,16 @@ function updatePlayPauseIcon(): void {
 
 function stepVideoFrame(dir: number): void {
   if (state.sourceType !== 'video') return;
+
+  if (currentGifAnimation) {
+    state.videoPlaying = false;
+    if (gifPlaybackTimer) clearTimeout(gifPlaybackTimer);
+    updatePlayPauseIcon();
+    const nextIdx = (currentGifFrameIdx + dir + currentGifAnimation.frames.length) % currentGifAnimation.frames.length;
+    renderGifFrame(nextIdx);
+    return;
+  }
+
   el.hiddenVideo.pause();
   state.videoPlaying = false;
   updatePlayPauseIcon();
@@ -1244,7 +1709,7 @@ function renderCurrentFrame(): void {
   }
 }
 
-function processFrame(source: HTMLImageElement | HTMLVideoElement): void {
+function processFrame(source: HTMLImageElement | HTMLVideoElement | ImageBitmap): void {
   const tw = state.targetWidth;
   const th = state.targetHeight;
 
@@ -1343,10 +1808,14 @@ function processFrame(source: HTMLImageElement | HTMLVideoElement): void {
 
   const finalImgData = targetCtx.createImageData(tw, th);
   finalImgData.data.set(quantizedData);
+
+  // Apply Pixel Art edits and retro font stamps
+  pixelEditor.applyToImageData(finalImgData, tw, th);
+
   targetCtx.putImageData(finalImgData, 0, 0);
   compareCtx.putImageData(finalImgData, 0, 0);
 
-  const encoded = encodeBitmap(quantizedData, tw, th, {
+  const encoded = encodeBitmap(finalImgData.data, tw, th, {
     colorFormat: state.colorFormat,
     endian: state.endian,
     swapBytes: state.swapBytes,
@@ -1363,7 +1832,7 @@ function processFrame(source: HTMLImageElement | HTMLVideoElement): void {
   updateSketches();
 }
 
-function renderOriginalCanvas(source: HTMLImageElement | HTMLVideoElement): void {
+function renderOriginalCanvas(source: HTMLImageElement | HTMLVideoElement | ImageBitmap): void {
   const sw = (source as HTMLVideoElement).videoWidth || (source as HTMLImageElement).naturalWidth || source.width;
   const sh = (source as HTMLVideoElement).videoHeight || (source as HTMLImageElement).naturalHeight || source.height;
   el.originalCanvas.width = sw;
@@ -1430,6 +1899,13 @@ function updateCodePreview(): void {
   } else if (ef === 'python') {
     el.codePreviewTitle.textContent = `${name}.py (MicroPython)`;
     code = generateMicroPython(name, tw, th, bytes);
+  } else if (ef === 'rle_compressed') {
+    const rleRes = compressRLE(bytes);
+    el.codePreviewTitle.innerHTML = `${name}_rle.h <span class="rle-badge">RLE: ${rleRes.originalSize}B &rarr; ${rleRes.compressedSize}B (${rleRes.ratioPercent}%)</span>`;
+    code = generateRLECHeader(name, tw, th, bytes, {
+      colorFormat: state.colorFormat,
+      useProgmem: state.useProgmem
+    });
   } else if (ef === 'png_preview') {
     el.codePreviewTitle.textContent = `${name}_preview.png (Imagen Renderizada)`;
     code = `// Al pulsar "Exportar", se guardará una imagen PNG exacta\n// con la resolución de pantalla (${tw}x${th}) y la paleta de colores cuantizada.`;
@@ -1491,6 +1967,14 @@ async function exportSingleFrame(): Promise<void> {
     await saveFileOrDownload(`${name}.h`, content, 'text/x-c', false);
   } else if (ef === 'binary') {
     await saveFileOrDownload(`${name}.bin`, bytes, 'application/octet-stream', true);
+  } else if (ef === 'rle_compressed') {
+    const rleRes = compressRLE(bytes);
+    const rleHeader = generateRLECHeader(name, tw, th, bytes, {
+      colorFormat: state.colorFormat,
+      useProgmem: state.useProgmem
+    });
+    showToast(`✔ RLE: ${rleRes.originalSize}B -> ${rleRes.compressedSize}B (${rleRes.ratioPercent}%)`);
+    await saveFileOrDownload(`${name}_rle.h`, rleHeader, 'text/x-c', false);
   } else if (ef === 'bmpr') {
     const bmprData = generateBmprBinary(tw, th, bytes, 1, 15, state.colorFormat, state.swapBytes);
     await saveFileOrDownload(`${name}.bmpr`, bmprData, 'application/octet-stream', true);
@@ -1567,19 +2051,35 @@ async function exportVideoSequence(): Promise<void> {
   const frames: SequenceFrame[] = [];
   const origTime = el.hiddenVideo.currentTime;
 
-  for (let t = inP; t <= outP + 0.0001; t += step) {
-    await seekVideo(t);
-    processFrame(el.hiddenVideo);
-    if (state.currentEncoded) {
-      frames.push({
-        time: t,
-        values: [...state.currentEncoded.values],
-        bytes: new Uint8Array(state.currentEncoded.bytes)
-      });
+  if (currentGifAnimation) {
+    const total = currentGifAnimation.frames.length;
+    for (let i = 0; i < total; i++) {
+      processFrame(currentGifAnimation.frames[i].bitmap);
+      if (state.currentEncoded) {
+        frames.push({
+          time: (i / total) * state.videoDuration,
+          values: [...state.currentEncoded.values],
+          bytes: new Uint8Array(state.currentEncoded.bytes)
+        });
+      }
+      el.statusReady.textContent = `Extrayendo fotograma ${frames.length} / ${total}...`;
+      await new Promise(r => setTimeout(r, 10));
     }
-    el.statusReady.textContent = `Extrayendo fotograma ${frames.length} / ${expectedFrames}...`;
-    // Yield to browser UI thread so user sees real-time progress
-    await new Promise(r => setTimeout(r, 15));
+  } else {
+    for (let t = inP; t <= outP + 0.0001; t += step) {
+      await seekVideo(t);
+      processFrame(el.hiddenVideo);
+      if (state.currentEncoded) {
+        frames.push({
+          time: t,
+          values: [...state.currentEncoded.values],
+          bytes: new Uint8Array(state.currentEncoded.bytes)
+        });
+      }
+      el.statusReady.textContent = `Extrayendo fotograma ${frames.length} / ${expectedFrames}...`;
+      // Yield to browser UI thread so user sees real-time progress
+      await new Promise(r => setTimeout(r, 15));
+    }
   }
 
   el.hiddenVideo.currentTime = origTime;
