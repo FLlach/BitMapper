@@ -273,6 +273,11 @@ const el = {
   bleSettingTransition: document.getElementById('bleSettingTransition') as HTMLSelectElement,
   bleSettingBrightness: document.getElementById('bleSettingBrightness') as HTMLInputElement,
   bleSettingBrightnessLabel: document.getElementById('bleSettingBrightnessLabel') as HTMLElement,
+  bleSettingSleepEnabled: document.getElementById('bleSettingSleepEnabled') as HTMLInputElement,
+  bleSettingSleepTimeout: document.getElementById('bleSettingSleepTimeout') as HTMLSelectElement,
+  bleSleepTimeoutLabel: document.getElementById('bleSleepTimeoutLabel') as HTMLElement,
+  bleSettingSleepBrightness: document.getElementById('bleSettingSleepBrightness') as HTMLInputElement,
+  bleSettingSleepBrightnessLabel: document.getElementById('bleSettingSleepBrightnessLabel') as HTMLElement,
   btnBleApplySettings: document.getElementById('btnBleApplySettings') as HTMLButtonElement,
   btnBleRemotePrev: document.getElementById('btnBleRemotePrev') as HTMLButtonElement,
   btnBleRemoteNext: document.getElementById('btnBleRemoteNext') as HTMLButtonElement,
@@ -718,6 +723,58 @@ function setupEvents(): void {
       const pct = el.bleSettingBrightness.value;
       if (el.bleSettingBrightnessLabel) el.bleSettingBrightnessLabel.textContent = `${pct}%`;
       localStorage.setItem('bm_brightness', pct);
+    });
+  }
+
+  function getSleepBrightnessText(pct: number): string {
+    if (pct === 0) return '0% (Luz apagada)';
+    if (pct <= 10) return `${pct}% (Atenuado)`;
+    if (pct <= 30) return `${pct}% (Tenue)`;
+    return `${pct}% (Media luz)`;
+  }
+
+  function getSleepTimeoutText(sec: number): string {
+    if (sec >= 60) {
+      const min = Math.round(sec / 60);
+      return `${min} minuto${min > 1 ? 's' : ''}`;
+    }
+    return `${sec} segundos`;
+  }
+
+  const savedSleepEn = localStorage.getItem('bm_sleep_enabled');
+  if (savedSleepEn !== null && el.bleSettingSleepEnabled) {
+    el.bleSettingSleepEnabled.checked = savedSleepEn === '1';
+  }
+  const savedSleepTimeout = localStorage.getItem('bm_sleep_timeout');
+  if (savedSleepTimeout !== null && el.bleSettingSleepTimeout) {
+    el.bleSettingSleepTimeout.value = savedSleepTimeout;
+    if (el.bleSleepTimeoutLabel) el.bleSleepTimeoutLabel.textContent = getSleepTimeoutText(parseInt(savedSleepTimeout, 10));
+  }
+  const savedSleepBright = localStorage.getItem('bm_sleep_brightness');
+  if (savedSleepBright !== null && el.bleSettingSleepBrightness) {
+    el.bleSettingSleepBrightness.value = savedSleepBright;
+    if (el.bleSettingSleepBrightnessLabel) el.bleSettingSleepBrightnessLabel.textContent = getSleepBrightnessText(parseInt(savedSleepBright, 10));
+  }
+
+  if (el.bleSettingSleepEnabled) {
+    el.bleSettingSleepEnabled.addEventListener('change', () => {
+      localStorage.setItem('bm_sleep_enabled', el.bleSettingSleepEnabled.checked ? '1' : '0');
+    });
+  }
+
+  if (el.bleSettingSleepTimeout) {
+    el.bleSettingSleepTimeout.addEventListener('change', () => {
+      const val = parseInt(el.bleSettingSleepTimeout.value, 10) || 60;
+      if (el.bleSleepTimeoutLabel) el.bleSleepTimeoutLabel.textContent = getSleepTimeoutText(val);
+      localStorage.setItem('bm_sleep_timeout', val.toString());
+    });
+  }
+
+  if (el.bleSettingSleepBrightness) {
+    el.bleSettingSleepBrightness.addEventListener('input', () => {
+      const pct = parseInt(el.bleSettingSleepBrightness.value, 10) || 0;
+      if (el.bleSettingSleepBrightnessLabel) el.bleSettingSleepBrightnessLabel.textContent = getSleepBrightnessText(pct);
+      localStorage.setItem('bm_sleep_brightness', pct.toString());
     });
   }
 
@@ -2498,6 +2555,11 @@ async function handleBleApplySettings(): Promise<void> {
     const brightnessPct = parseInt(el.bleSettingBrightness.value, 10) || 60;
     const brightnessDuty = Math.round((brightnessPct / 100) * 255);
 
+    const sleepEnabled = el.bleSettingSleepEnabled ? el.bleSettingSleepEnabled.checked : true;
+    const sleepTimeoutSec = el.bleSettingSleepTimeout ? parseInt(el.bleSettingSleepTimeout.value, 10) || 60 : 60;
+    const sleepDimPct = el.bleSettingSleepBrightness ? parseInt(el.bleSettingSleepBrightness.value, 10) || 5 : 5;
+    const sleepDimDuty = Math.round((sleepDimPct / 100) * 255);
+
     el.btnBleApplySettings.disabled = true;
     el.btnBleApplySettings.textContent = 'Enviando...';
 
@@ -2511,8 +2573,12 @@ async function handleBleApplySettings(): Promise<void> {
 
     // 3. Enviar brillo
     await bleUploader.sendBrightnessConfig(brightnessDuty);
+    await new Promise(r => setTimeout(r, 60));
 
-    showToast('✔ ¡Ajustes aplicados y guardados en la memoria del ESP32!');
+    // 4. Enviar configuración de reposo (atenuación de pantalla)
+    await bleUploader.sendSleepConfig(sleepEnabled, sleepTimeoutSec, sleepDimDuty);
+
+    showToast('✔ ¡Ajustes y modo reposo aplicados en el ESP32!');
   } catch (err: any) {
     console.error('Error al aplicar ajustes en ESP32:', err);
     showToast(`Error al enviar ajustes: ${err?.message || err}`);

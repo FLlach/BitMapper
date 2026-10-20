@@ -560,6 +560,25 @@ export class BLEUploader {
   }
 
   /**
+   * Configurar modo Reposo / Atenuación de pantalla (Sleep Mode) en el ESP32
+   */
+  public async sendSleepConfig(enabled: boolean, timeoutSec: number, dimDuty: number): Promise<boolean> {
+    const clampedDuty = Math.max(0, Math.min(255, Math.round(dimDuty)));
+    const cmd = `SLEEP_CFG:${enabled ? 1 : 0}:${timeoutSec}:${clampedDuty}`;
+    const resp = await this.sendGenericCommand(cmd, 'SLEEP_CFG_OK', 2500);
+    return resp.startsWith('SLEEP_CFG_OK');
+  }
+
+  /**
+   * Enviar comando inmediato de entrar o salir de reposo
+   */
+  public async triggerSleep(enterSleep: boolean): Promise<boolean> {
+    const cmd = enterSleep ? 'SLEEP_NOW' : 'WAKE_NOW';
+    const resp = await this.sendGenericCommand(cmd, 'SLEEP_STATE_OK', 2500);
+    return resp.startsWith('SLEEP_STATE_OK');
+  }
+
+  /**
    * Método de conveniencia completo (Conectar + Transmitir).
    */
   public async upload(options: BLEUploadOptions): Promise<void> {

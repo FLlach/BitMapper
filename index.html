@@ -777,6 +777,55 @@
             </div>
           </div>
 
+          <!-- Tarjeta: Modo Reposo y Atenuación de Pantalla -->
+          <div class="ble-card" style="margin-top: 14px;">
+            <div class="ble-card-title">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+              Modo Reposo y Atenuación de Pantalla (Sleep Mode)
+            </div>
+            <div style="font-size: 12px; color: var(--text-dim); margin-bottom: 12px;">
+              Ahorra energía reduciendo automáticamente el brillo de la pantalla tras un tiempo de inactividad. Al tocar el sensor táctil o enviar cualquier comando BLE, la pantalla recupera el brillo activo instantáneamente.
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; background: rgba(255,255,255,0.03); padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border-color);">
+              <div>
+                <div style="font-weight: 600; font-size: 13px;">Activar Atenuación Automática</div>
+                <div style="font-size: 11px; color: var(--text-dim);">Baja el brillo tras un tiempo sin actividad</div>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="bleSettingSleepEnabled" checked>
+                <span class="slider-toggle"></span>
+              </label>
+            </div>
+
+            <div class="control-group">
+              <label class="control-label" style="display: flex; justify-content: space-between;">
+                <span>Tiempo de inactividad antes de atenuar</span>
+                <span id="bleSleepTimeoutLabel" style="color: var(--accent-cyan); font-weight: 600;">1 minuto</span>
+              </label>
+              <select id="bleSettingSleepTimeout" style="width: 100%; padding: 8px; border-radius: 6px; background: var(--bg-tertiary); color: var(--text-main); border: 1px solid var(--border-color);">
+                <option value="30">30 segundos (Rápido)</option>
+                <option value="60" selected>1 minuto (Recomendado)</option>
+                <option value="120">2 minutos</option>
+                <option value="300">5 minutos</option>
+                <option value="600">10 minutos</option>
+              </select>
+            </div>
+
+            <div class="control-group" style="margin-top: 12px;">
+              <label class="control-label" style="display: flex; justify-content: space-between;">
+                <span>Nivel de Brillo en Reposo</span>
+                <span id="bleSettingSleepBrightnessLabel" style="color: var(--accent-cyan); font-weight: 600;">5% (Atenuado)</span>
+              </label>
+              <input type="range" id="bleSettingSleepBrightness" min="0" max="50" value="5" style="width: 100%;">
+              <div style="display: flex; justify-content: space-between; font-size: 10px; color: var(--text-dim); margin-top: 4px;">
+                <span>0% (Luz apagada)</span>
+                <span>25% (Tenue)</span>
+                <span>50% (Media luz)</span>
+              </div>
+            </div>
+          </div>
+
           <!-- Botones de Acción y Control Remoto -->
           <div style="margin-top: 14px; display: flex; gap: 10px; align-items: center; justify-content: space-between;">
             <div style="display: flex; gap: 8px;">
